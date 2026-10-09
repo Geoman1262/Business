@@ -1,18 +1,22 @@
-# دفتر الحساب — Debt Book
+# دفتر الحساب — نسخة تحديث حساب الديون
 
-## Cloudflare Workers Builds deployment
+هذه النسخة تحافظ على مفتاح التخزين الحالي `debt_book_v1` حتى تقرأ العمليات المحفوظة على الجهاز نفسه دون تحويل أو حذف.
 
-This project serves static files from the repository root. Keep these files together in the root of the GitHub repository:
-- `index.html`
-- `manifest.webmanifest`
-- `sw.js`
-- `icon.svg`
-- `wrangler.toml`
+## ما تم تحديثه
+- احتساب الرصيد بالسنت لتقليل أخطاء الكسور العشرية.
+- توزيع كل دفعة حسابيًا على أقدم الديون المفتوحة أولًا، بحسب ترتيب التاريخ والوقت.
+- إظهار تفاصيل توزيع الدفعة في سجل العمليات.
+- منع تسجيل دفعة جديدة أكبر من الرصيد المستحق لتجنب رصيد سالب غير مقصود.
+- تحديث رقم كاش Service Worker لطلب النسخة الجديدة بعد النشر.
 
-In Cloudflare Workers Builds, set the deploy command to:
+## النشر
+ارفع هذه الملفات إلى جذر مستودع GitHub، مع استبدال الملفات ذات الأسماء نفسها:
+`index.html`, `sw.js`, `manifest.webmanifest`, `wrangler.toml`, `icon.svg`.
 
-`npx wrangler deploy`
+إعداد Cloudflare Worker الحالي يستخدم `npx wrangler deploy` و`wrangler.toml` مع `assets.directory = "."`.
 
-Do not put these files inside another folder. The `wrangler.toml` assets directory is `.` (repository root), so it does not require a `public` folder.
-
-The app stores its records in the browser's local storage on that device. Export a backup regularly; clearing browser data or changing devices may remove locally stored records.
+## مهم جدًا قبل النشر
+- لا تضغط Clear Cache داخل إعدادات البناء إلا عند الحاجة، ولا تمسح بيانات الموقع من Chrome.
+- التحديث لا يحذف `localStorage` ولا يغيّر المفتاح `debt_book_v1`.
+- خذ نسخة احتياطية من التطبيق قبل التحديث من صفحة الإعدادات.
+- اختبر بدين 500، ثم دين 300، ثم دفعة 600: يجب أن يُغلق 500 من الدين الأول و100 من الثاني، ويبقى الرصيد 200.

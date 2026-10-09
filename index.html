@@ -4,9 +4,6 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>دفتر الحساب</title><meta name="theme-color" content="#0879d1">
 <link rel="manifest" href="./manifest.webmanifest">
-<link rel="apple-touch-icon" href="./icons/icon-192.png">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="./icon.svg" type="image/svg+xml">
 <style>
 :root{--blue:#0879d1;--blue2:#0b65b7;--green:#12a95a;--red:#e53935;--bg:#f5f7fb;--text:#16202a;--muted:#6b7785;--card:#fff;--line:#e5e9ef}
@@ -40,19 +37,56 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,
 </div>
 <div id="modal" class="modal"><div class="sheet"><button class="close" onclick="closeModal()">×</button><h2 id="modalTitle">إضافة</h2><div class="field"><label>المبلغ ($)</label><input id="entryAmount" class="input" inputmode="decimal" type="number" min="0.01" step="0.01" placeholder="0.00"></div><div class="field"><label>ملاحظة (اختياري)</label><input id="entryNote" class="input" placeholder="مثلاً: بضاعة جديدة"></div><button id="saveEntry" class="btn primary">حفظ العملية</button><div id="paymentInfo" class="small" style="margin-top:10px"></div></div></div>
 <script>
-const KEY='debt_book_v1';
+const KEY='debt_book_v1'; // Keep the existing storage key so current saved data is preserved.
 let data=JSON.parse(localStorage.getItem(KEY)||'null')||{name:'حساب الشخص',entries:[]};
 const money=n=>Number(n||0).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:2})+' $';
 const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 function save(){localStorage.setItem(KEY,JSON.stringify(data));render();}
-function balance(){return data.entries.reduce((s,e)=>s+(e.type==='debt'?e.amount:-e.amount),0)}
+function cents(n){return Math.round((Number(n)||0)*100)}
+function fromCents(n){return n/100}
+function balanceCents(){return data.entries.reduce((s,e)=>s+(e.type==='debt'?cents(e.amount):-cents(e.amount)),0)}
+function balance(){return fromCents(balanceCents())}
+// Recalculate payment allocation chronologically. This is derived from the ledger,
+// so older saved data remains compatible and no existing entries are rewritten.
+function getPaymentAllocations(){
+ const entries=[...data.entries].sort((a,b)=>(Number(a.ts)||0)-(Number(b.ts)||0)||String(a.id||'').localeCompare(String(b.id||'')));
+ const debts=[]; const result=new Map();
+ for(const e of entries){
+  if(e.type==='debt') debts.push({entry:e,remaining:cents(e.amount)});
+  else if(e.type==='payment'){
+   let left=cents(e.amount); const allocations=[];
+   for(const d of debts){ if(left<=0) break; if(d.remaining<=0) continue;
+    const applied=Math.min(left,d.remaining); d.remaining-=applied; left-=applied;
+    allocations.push({debt:d.entry,amount:fromCents(applied)});
+   }
+   result.set(e.id,{allocations,unapplied:fromCents(left)});
+  }
+ }
+ return result;
+}
 function render(){document.getElementById('personName').textContent=data.name;document.getElementById('nameInput').value=data.name;const b=balance();const el=document.getElementById('balance');el.textContent=money(Math.abs(b));el.className='amount '+(b<=0?'ok':'');document.querySelector('.balance .small').textContent=b>0?'المبلغ المتبقي عليه للشخص':'لا يوجد دين مستحق';
 const td=data.entries.filter(e=>e.type==='debt').reduce((s,e)=>s+e.amount,0),tp=data.entries.filter(e=>e.type==='payment').reduce((s,e)=>s+e.amount,0);document.getElementById('totalDebt').textContent=money(td);document.getElementById('totalPaid').textContent=money(tp);document.getElementById('opCount').textContent=data.entries.length;const r=[...data.entries].sort((a,b)=>b.ts-a.ts).slice(0,5);document.getElementById('recent').innerHTML=r.length?r.map(card).join(''):'<div class="empty">لا توجد عمليات بعد</div>';}
-function card(e){const d=new Date(e.ts);return `<div class="card"><div class="cardhead"><div><div class="type ${e.type==='debt'?'debttext':'paytext'}">${e.type==='debt'?'📦 بضاعة / دين':'💵 دفعة'}</div><div class="meta">${d.toLocaleDateString('ar-LB')} ${d.toLocaleTimeString('ar-LB',{hour:'2-digit',minute:'2-digit'})}</div></div><div class="money ${e.type==='debt'?'debttext':'paytext'}">${e.type==='debt'?'+':'-'}${money(e.amount)}</div></div>${e.note?`<div class="note">${esc(e.note)}</div>`:''}</div>`}
+function card(e){const d=new Date(e.ts);let allocationHtml='';
+ if(e.type==='payment'){
+  const detail=getPaymentAllocations().get(e.id);
+  if(detail&&detail.allocations.length){allocationHtml='<div class="note"><strong>توزيع الدفعة على أقدم الديون:</strong><br>'+detail.allocations.map(a=>`• ${esc(a.debt.note||'بضاعة / دين')} (${new Date(a.debt.ts).toLocaleDateString('ar-LB')}): ${money(a.amount)}`).join('<br>')+'</div>';}
+  if(detail&&detail.unapplied>0) allocationHtml+=`<div class="note" style="color:var(--red)">مبلغ غير موزّع على دين: ${money(detail.unapplied)}</div>`;
+ }
+ return `<div class="card"><div class="cardhead"><div><div class="type ${e.type==='debt'?'debttext':'paytext'}">${e.type==='debt'?'📦 بضاعة / دين':'💵 دفعة'}</div><div class="meta">${d.toLocaleDateString('ar-LB')} ${d.toLocaleTimeString('ar-LB',{hour:'2-digit',minute:'2-digit'})}</div></div><div class="money ${e.type==='debt'?'debttext':'paytext'}">${e.type==='debt'?'+':'-'}${money(e.amount)}</div></div>${e.note?`<div class="note">${esc(e.note)}</div>`:''}${allocationHtml}</div>`}
 function showTab(id,btn){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('nav button').forEach(b=>b.classList.remove('active'));btn.classList.add('active');if(id==='history')renderHistory();}
 let mode='debt';function openEntry(m){mode=m;document.getElementById('modalTitle').textContent=m==='debt'?'إضافة بضاعة / دين':'إضافة دفعة';document.getElementById('entryAmount').value='';document.getElementById('entryNote').value='';document.getElementById('paymentInfo').textContent=m==='payment'?'الدفعة ستُحتسب تلقائياً على أقدم الديون أولاً.':'';document.getElementById('modal').classList.add('show');setTimeout(()=>document.getElementById('entryAmount').focus(),100)}
 function closeModal(){document.getElementById('modal').classList.remove('show')}
-document.getElementById('saveEntry').onclick=()=>{const amount=parseFloat(document.getElementById('entryAmount').value);if(!amount||amount<=0){alert('أدخل مبلغاً صحيحاً');return}if(mode==='payment'&&amount>balance()+0.000001){if(!confirm('الدفعة أكبر من الرصيد الحالي. هل تريد تسجيلها؟'))return}data.entries.push({id:String(Date.now())+'_'+Math.random().toString(36).slice(2),type:mode,amount,note:document.getElementById('entryNote').value.trim(),ts:Date.now()});save();closeModal()};
+document.getElementById('saveEntry').onclick=()=>{
+ const raw=Number(document.getElementById('entryAmount').value);
+ if(!Number.isFinite(raw)||raw<=0){alert('أدخل مبلغاً صحيحاً أكبر من صفر');return}
+ const amount=fromCents(cents(raw));
+ if(!Number.isFinite(amount)||amount<=0){alert('أدخل مبلغاً صحيحاً');return}
+ if(mode==='payment'&&cents(amount)>Math.max(0,balanceCents())){
+  alert('قيمة الدفعة أكبر من الدين المستحق حالياً. لتجنّب رصيد غير دقيق، سجّل دفعة لا تتجاوز '+money(Math.max(0,balance()))+'.');return;
+ }
+ data.entries.push({id:String(Date.now())+'_'+Math.random().toString(36).slice(2),type:mode,amount,note:document.getElementById('entryNote').value.trim(),ts:Date.now()});
+ save();closeModal();
+};
 function renderHistory(){let arr=[...data.entries].sort((a,b)=>b.ts-a.ts);const f=document.getElementById('fromDate').value,t=document.getElementById('toDate').value,type=document.getElementById('typeFilter').value,q=document.getElementById('searchText').value.trim().toLowerCase();if(f)arr=arr.filter(e=>new Date(e.ts).toISOString().slice(0,10)>=f);if(t)arr=arr.filter(e=>new Date(e.ts).toISOString().slice(0,10)<=t);if(type!=='all')arr=arr.filter(e=>e.type===type);if(q)arr=arr.filter(e=>(e.note||'').toLowerCase().includes(q));document.getElementById('resultbar').textContent=`عدد النتائج: ${arr.length}`;document.getElementById('historyList').innerHTML=arr.length?arr.map(card).join(''):'<div class="empty">لا توجد نتائج</div>'}
 function saveName(){const n=document.getElementById('nameInput').value.trim();data.name=n||'حساب الشخص';save();alert('تم الحفظ')}
 function backup(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='debt-book-backup.json';a.click();URL.revokeObjectURL(a.href)}

@@ -1,26 +1,18 @@
 # دفتر الحساب — Debt Book
 
-تطبيق ويب عربي لتسجيل البضاعة/الديون والدفعات مع سجل وفلترة بالتاريخ. يحفظ البيانات محليًا في المتصفح باستخدام `localStorage`؛ لا يوجد حساب مستخدم أو مزامنة بين الأجهزة.
+## Cloudflare Workers Builds deployment
 
-## إصلاح نشر Cloudflare
+This project serves static files from the repository root. Keep these files together in the root of the GitHub repository:
+- `index.html`
+- `manifest.webmanifest`
+- `sw.js`
+- `icon.svg`
+- `wrangler.toml`
 
-هذا الأرشيف معدّ للمشروع الذي يستخدم أمر النشر `npx wrangler deploy`.
+In Cloudflare Workers Builds, set the deploy command to:
 
-1. فك ضغط الملف.
-2. ارفع محتويات المجلد إلى جذر مستودع GitHub `debt-book` مع الحفاظ على البنية التالية:
-   - `wrangler.toml`
-   - `public/index.html`
-   - `public/manifest.webmanifest`
-   - `public/sw.js`
-   - `public/icon.svg`
-3. اعمل Commit للتغييرات.
-4. في Cloudflare Build settings، اجعل Deploy command: `npx wrangler deploy`، وBuild command فارغًا. لا تضف Build output directory؛ إعداد `wrangler.toml` يحدد مجلد الملفات الثابتة.
-5. أعد النشر. يجب أن يقرأ Wrangler ملفات الموقع من `public/` بدلًا من البحث عن مجلد ملفات غير محدد.
+`npx wrangler deploy`
 
-## ملاحظة حول Pages مقابل Workers
+Do not put these files inside another folder. The `wrangler.toml` assets directory is `.` (repository root), so it does not require a `public` folder.
 
-الإعداد الموجود في `wrangler.toml` مخصص للنشر باستخدام `wrangler deploy` كـ Worker مع Static Assets. إذا أنشأت مشروعًا من نوع **Cloudflare Pages** عبر Connect to Git، فلا تستخدم أمر `npx wrangler deploy`؛ استخدم إعدادات Pages، واجعل Build command فارغًا وBuild output directory `public`.
-
-## التثبيت على الهاتف والعمل دون إنترنت
-
-بعد نجاح النشر وفتح رابط HTTPS في Chrome على Android، افتح القائمة ⋮ واختر Install app أو Add to Home screen. التخزين محلي على المتصفح/الجهاز، لذلك استخدم التصدير/النسخة الاحتياطية بانتظام.
+The app stores its records in the browser's local storage on that device. Export a backup regularly; clearing browser data or changing devices may remove locally stored records.

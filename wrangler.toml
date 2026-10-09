@@ -1,0 +1,6 @@
+name = "debt-book"
+compatibility_date = "2026-10-09"
+
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"

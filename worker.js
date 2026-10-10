@@ -2,21 +2,22 @@ const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-
 const json = (obj,status=200)=>new Response(JSON.stringify(obj),{status,headers:{'Content-Type':'application/json; charset=utf-8',...corsHeaders,'Cache-Control':'no-store'}});
 const hex = bytes => [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
 async function token(){const b=new Uint8Array(32);crypto.getRandomValues(b);return hex(b)}
-async function ensureSchema(db){
- await db.prepare(`CREATE TABLE IF NOT EXISTS client_accounts (client_id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, client_name TEXT NOT NULL, client_phone TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL, updated_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1)`).run();
- await db.prepare('CREATE INDEX IF NOT EXISTS idx_client_accounts_token_active ON client_accounts(token, active)').run();
-}
 export default {
  async fetch(request,env){
   const url=new URL(request.url); if(request.method==='OPTIONS') return new Response(null,{headers:corsHeaders});
   if(url.pathname.startsWith('/api/')){
    if(url.pathname==='/api/health'&&request.method==='GET'){
-    let schemaConfigured=false, dbError=null;
-    if(env.DB){try{await ensureSchema(env.DB);schemaConfigured=true;}catch(e){dbError=String(e?.message||e).slice(0,180);}}
-    return json({ok:!!env.DB&&schemaConfigured,databaseConfigured:!!env.DB,schemaConfigured,adminKeyConfigured:typeof env.ADMIN_KEY==='string'&&env.ADMIN_KEY.trim().length>0,environment:'worker',...(dbError?{databaseError:dbError}:{})},env.DB&&schemaConfigured?200:503);
+    return json({ok:true,databaseConfigured:!!env.DB,adminKeyConfigured:typeof env.ADMIN_KEY==='string'&&env.ADMIN_KEY.trim().length>0,environment:'worker'});
    }
-   if(!env.DB) return json({error:'قاعدة البيانات D1 غير مربوطة. راجع ربط DB في Worker Settings.'},503);
-   try{await ensureSchema(env.DB)}catch(e){return json({error:'قاعدة D1 موجودة لكن تعذّر تجهيز الجداول: '+String(e?.message||e).slice(0,180)},503);}
+   // Validate a key before the browser stores it. This endpoint does not reveal the secret.
+   if(url.pathname==='/api/verify-key'&&request.method==='POST'){
+    const configuredKey=typeof env.ADMIN_KEY==='string'?env.ADMIN_KEY.trim():'';
+    const suppliedKey=(request.headers.get('X-Admin-Key')||'').trim();
+    if(!configuredKey)return json({ok:false,error:'ADMIN_KEY غير مضبوط في إعدادات Production لهذا Worker.'},503);
+    if(!suppliedKey||suppliedKey!==configuredKey)return json({ok:false,error:'المفتاح الذي أدخلته لا يطابق Secret باسم ADMIN_KEY في Worker business ضمن Production. انسخ القيمة نفسها تماماً.'},401);
+    return json({ok:true,keyMatches:true});
+   }
+   if(!env.DB) return json({error:'قاعدة البيانات D1 غير مربوطة. راجع تعليمات الإعداد.'},503);
    if(url.pathname==='/api/portal'&&request.method==='GET'){
     const t=url.searchParams.get('token')||''; if(!/^[a-f0-9]{64}$/.test(t))return json({error:'الرابط غير صالح'},400);
     const row=await env.DB.prepare('SELECT client_name, client_phone, payload, updated_at FROM client_accounts WHERE token=? AND active=1').bind(t).first();

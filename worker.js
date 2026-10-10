@@ -45,10 +45,7 @@ export default {
    }
    return json({error:'المسار غير موجود'},404);
   }
-  // Force customer-only route through the Worker before static asset fallback.
-  if (url.pathname === '/portal' || url.pathname === '/portal.html') {
-   return env.ASSETS.fetch(new Request(new URL('/portal.html', url).toString(), request));
-  }
-  return env.ASSETS.fetch(request);
+   // Cloudflare Assets serves /portal.html directly; only /api/* runs through this Worker.
+   return env.ASSETS.fetch(request);
  }
 };

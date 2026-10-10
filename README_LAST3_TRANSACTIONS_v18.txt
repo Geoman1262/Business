@@ -1,0 +1,1 @@
+v18: Customer portal now shows only the latest 3 transactions initially. The same button expands to all transactions and switches to show last 3. Filters apply before the 3-item limit. Includes English and Arabic labels. Replace portal.html in the project; other files are retained from v17.

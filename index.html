@@ -69,4 +69,24 @@ function backup(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'appli
 function restore(ev){const file=ev.target.files[0];if(!file)return;const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(!x.entries||!Array.isArray(x.entries))throw 0;data=x;save();alert('تمت استعادة البيانات')}catch{alert('ملف غير صالح')}};r.readAsText(file);ev.target.value=''}
 function clearAll(){if(confirm('حذف جميع العمليات؟ لا يمكن التراجع عن هذا الإجراء.')){data.entries=[];save()}}
 render();
-</script><script>if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{})}</script></body></html>
+</script><script>
+// Register the service worker without allowing the browser HTTP cache to hide newer versions.
+if ('serviceWorker' in navigator) {
+  let reloadedForWorker = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadedForWorker) return;
+    reloadedForWorker = true;
+    // All account changes are written synchronously to localStorage before this reload.
+    window.location.reload();
+  });
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' });
+      const check = () => reg.update().catch(() => {});
+      check();
+      setInterval(check, 60 * 1000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    } catch (err) { console.warn('تعذّر فحص تحديث التطبيق', err); }
+  });
+}
+</script></body></html>

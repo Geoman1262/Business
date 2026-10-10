@@ -1,6 +1,6 @@
 /* Auto-updating service worker for Daftar AlHesab.
    App records stay in localStorage under debt_book_v1; cache cleanup never touches them. */
-const CACHE_NAME = 'daftar-client-portal-v3';
+const CACHE_NAME = 'daftar-client-portal-v4';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil((async () => {

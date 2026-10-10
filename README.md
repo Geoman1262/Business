@@ -72,3 +72,6 @@ After deploying, generate/update the client's link again and open the newly gene
 - Merchant reports are generated from the Reports tab: choose From date and To date, select the client using the client selector at the top of the merchant app, then press Generate Report. CSV/Excel-compatible export and Print/PDF are available. The generated report now prominently names the customer and selected period.
 - Bumped the service-worker cache version so the updated portal can replace a cached older version after deployment.
 - Existing localStorage keys, ledger entries, and D1 schema remain unchanged.
+
+## Customer self-service reports (v10)
+The customer portal (`portal.html?token=...`) now includes a Reports panel. The customer can choose a date range and report type (all, purchases/debts, or payments), view totals and a transaction table, export the selected report as CSV for Excel, or use Print / Save PDF. Reports are read-only and limited to the single customer's account already authorized by the portal token. No database schema or account storage keys are changed. The service-worker cache name was bumped to v4 to help devices refresh cached app assets.

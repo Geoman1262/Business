@@ -33,3 +33,11 @@
 - Customer URLs are always generated with the production hostname `business.lixgame.workers.dev`, not a Preview hostname.
 
 After deploying, generate/update the client's link again and open the newly generated `/portal.html?token=...` URL. Existing links can be reused only if the token still exists and is active, but regenerate to ensure production hostname.
+
+
+## إصلاح بوابة العميل وعدم الرجوع إلى صفحة الإدارة
+- تم تحديث `sw.js` إلى cache version جديد.
+- مسار `/portal.html` يُطلب من الشبكة مباشرةً، ولا يُستخدم `index.html` كبديل عند فشل الاتصال.
+- هذا الإصلاح يمنع Service Worker من تخزين صفحة بوابة العميل على أنها الصفحة الرئيسية.
+- بعد رفع الملفات ونشر Worker، افتح الرابط الجديد بإنترنت فعّال. إذا كان المتصفح يحتفظ بنسخة قديمة، أغلق تبويبات الموقع وافتحه مجدداً أو امسح بيانات الموقع/أعد تثبيت PWA.
+- لم يتم نشر هذه الحزمة داخل حساب Cloudflare الخاص بك من هنا؛ لذلك يجب التحقق بعد النشر من أن `/portal.html` يعرض عنوان «كشف حساب العميل» وأن `/api/portal?token=...` يعيد بيانات العميل الصحيحة.

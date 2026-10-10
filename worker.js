@@ -9,6 +9,13 @@ export default {
    if(url.pathname==='/api/health'&&request.method==='GET'){
     return json({ok:true,databaseConfigured:!!env.DB,adminKeyConfigured:typeof env.ADMIN_KEY==='string'&&env.ADMIN_KEY.trim().length>0,environment:'worker'});
    }
+   if(url.pathname==='/api/verify-key'&&request.method==='POST'){
+    const configured=typeof env.ADMIN_KEY==='string'?env.ADMIN_KEY.trim():'';
+    const supplied=(request.headers.get('X-Admin-Key')||'').trim();
+    if(!configured)return json({ok:false,reason:'secret_missing',error:'ADMIN_KEY غير مضبوط على هذا Worker'},503);
+    if(!supplied||supplied!==configured)return json({ok:false,reason:'key_mismatch',error:'المفتاح المحفوظ في التطبيق لا يطابق ADMIN_KEY لهذا Worker'},401);
+    return json({ok:true,verified:true});
+   }
    if(!env.DB) return json({error:'قاعدة البيانات D1 غير مربوطة. راجع تعليمات الإعداد.'},503);
    if(url.pathname==='/api/portal'&&request.method==='GET'){
     const t=url.searchParams.get('token')||''; if(!/^[a-f0-9]{64}$/.test(t))return json({error:'الرابط غير صالح'},400);

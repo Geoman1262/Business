@@ -1,5 +1,5 @@
-name = "debt-book"
-compatibility_date = "2026-10-09"
+name = "business"
+compatibility_date = "2026-10-10"
 
 [assets]
 directory = "."

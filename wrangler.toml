@@ -3,12 +3,12 @@ main = "worker.js"
 compatibility_date = "2026-10-10"
 
 [assets]
-directory = "."
+directory = "./public"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "business-clients"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "3eb1ca79-353f-4c16-9916-0778fe346602"
 migrations_dir = "migrations"

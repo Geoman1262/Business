@@ -23,8 +23,13 @@
 بعد النشر افتح `/api/health` على عنوان الإنتاج. يجب أن تكون `databaseConfigured` و`adminKeyConfigured` بقيمة `true`. هذا المسار لا يكشف قيمة المفتاح. تم تعديل Worker لتجاهل المسافات الزائدة عند مقارنة المفتاح، ولإظهار الفرق بين Secret غير المضبوط ومفتاح غير مطابق. إذا كان `adminKeyConfigured` false، تحقق من Secret في بيئة Production للـ Worker `business` وأعد النشر. لا ترسل قيمة المفتاح لأحد.
 
 
-## Fix: customer link must open reports, not the admin app
-- The Worker now explicitly routes `/portal.html` and `/portal` to the customer portal asset.
-- Generated customer links always use the Production host `https://business.lixgame.workers.dev/portal.html?token=...`, even if an admin accidentally opens a preview deployment.
-- After deployment, create/update the customer link again and send the newly generated link. Old links from preview deployments should not be reused.
-- Test by opening the full `/portal.html?token=...` URL in a private browser window. The customer should see the read-only statement page, not the admin navigation.
+## التحقق من مفتاح المزامنة (نسخة مصححة)
+زر إعداد مفتاح المزامنة يتحقق الآن عبر `/api/verify-key` من تطابق القيمة مع Secret `ADMIN_KEY` في Worker `business` ضمن Production قبل حفظها محلياً. لا يطلب هذا المسار ولا يكشف قيمة السر. يجب نشر `worker.js` و`index.html` معاً.
+
+
+## Fix final: `/portal.html` must bypass asset fallback
+- Added `/portal.html` and `/portal` to `assets.run_worker_first`; otherwise Cloudflare Assets may answer the request with the admin app/fallback before the Worker can route the customer portal.
+- Worker explicitly serves `portal.html` for those paths.
+- Customer URLs are always generated with the production hostname `business.lixgame.workers.dev`, not a Preview hostname.
+
+After deploying, generate/update the client's link again and open the newly generated `/portal.html?token=...` URL. Existing links can be reused only if the token still exists and is active, but regenerate to ensure production hostname.

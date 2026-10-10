@@ -9,12 +9,13 @@ export default {
    if(url.pathname==='/api/health'&&request.method==='GET'){
     return json({ok:true,databaseConfigured:!!env.DB,adminKeyConfigured:typeof env.ADMIN_KEY==='string'&&env.ADMIN_KEY.trim().length>0,environment:'worker'});
    }
+   // Validate a key before the browser stores it. This endpoint does not reveal the secret.
    if(url.pathname==='/api/verify-key'&&request.method==='POST'){
-    const configured=typeof env.ADMIN_KEY==='string'?env.ADMIN_KEY.trim():'';
-    const supplied=(request.headers.get('X-Admin-Key')||'').trim();
-    if(!configured)return json({ok:false,reason:'secret_missing',error:'ADMIN_KEY غير مضبوط على هذا Worker'},503);
-    if(!supplied||supplied!==configured)return json({ok:false,reason:'key_mismatch',error:'المفتاح المحفوظ في التطبيق لا يطابق ADMIN_KEY لهذا Worker'},401);
-    return json({ok:true,verified:true});
+    const configuredKey=typeof env.ADMIN_KEY==='string'?env.ADMIN_KEY.trim():'';
+    const suppliedKey=(request.headers.get('X-Admin-Key')||'').trim();
+    if(!configuredKey)return json({ok:false,error:'ADMIN_KEY غير مضبوط في إعدادات Production لهذا Worker.'},503);
+    if(!suppliedKey||suppliedKey!==configuredKey)return json({ok:false,error:'المفتاح الذي أدخلته لا يطابق Secret باسم ADMIN_KEY في Worker business ضمن Production. انسخ القيمة نفسها تماماً.'},401);
+    return json({ok:true,keyMatches:true});
    }
    if(!env.DB) return json({error:'قاعدة البيانات D1 غير مربوطة. راجع تعليمات الإعداد.'},503);
    if(url.pathname==='/api/portal'&&request.method==='GET'){
@@ -44,10 +45,9 @@ export default {
    }
    return json({error:'المسار غير موجود'},404);
   }
-  // Explicitly serve the client-only portal route. Keep the admin app at /.
+  // Force customer-only route through the Worker before static asset fallback.
   if (url.pathname === '/portal' || url.pathname === '/portal.html') {
-   const assetUrl = new URL('/portal.html', url);
-   return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
+   return env.ASSETS.fetch(new Request(new URL('/portal.html', url).toString(), request));
   }
   return env.ASSETS.fetch(request);
  }

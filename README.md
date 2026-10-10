@@ -57,3 +57,11 @@ After deploying, generate/update the client's link again and open the newly gene
 
 ## إصلاح توقف بوابة العميل عند «جارٍ تحميل البيانات»
 تم إصلاح خطأ JavaScript نحوي في `portal.html` كان يمنع تشغيل تحميل كشف حساب العميل. تم فحص جميع سكربتات `index.html` و`portal.html` باستخدام Node.js بعد التعديل.
+
+## Digital credit-limit card (customer portal)
+- In the merchant app, open **Settings → Customer Profile**, enter the customer's **Credit Limit ($)**, and press **Save Customer Details**.
+- Create/update the customer's portal link after saving. The limit is stored with that customer's existing local account data and is included in the normal Cloudflare sync payload; no D1 schema migration is required.
+- The customer portal defaults to English and has an EN / عربي toggle. The selected language is remembered on that customer's device.
+- The glass-style card shows the credit limit, used debt, available amount, and a horizontal bar representing the **remaining available limit**. Every transaction can be expanded to inspect its amount, date, description, serial reference, resulting balance, and related debt/payment allocation where available.
+- The portal is read-only. The merchant remains the only person who can edit the ledger or credit limit.
+- Existing customer entries are not migrated or deleted by this feature. A missing limit displays as not set until the merchant enters one.

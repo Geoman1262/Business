@@ -17,6 +17,21 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,
 .report-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.report-stat{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px}.report-stat span{display:block;font-size:12px;color:var(--muted)}.report-stat b{display:block;font-size:19px;margin-top:5px}.bar-row{display:grid;grid-template-columns:75px 1fr 75px;align-items:center;gap:8px;margin:10px 0;font-size:12px}.bar-track{height:10px;background:#edf1f6;border-radius:99px;overflow:hidden}.bar-fill{height:100%;background:var(--blue);border-radius:99px}.report-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}.filters{display:grid;grid-template-columns:1fr 1fr;gap:8px}.filters .full{grid-column:1/-1}.resultbar{font-size:13px;color:var(--muted);margin:10px 0}.small{font-size:12px;color:var(--muted)}.settings-item{display:flex;justify-content:space-between;align-items:center;padding:15px 4px;border-bottom:1px solid var(--line)}.settings-item button{border:0;border-radius:9px;padding:9px 12px;background:#edf4fb;color:var(--blue);font-weight:700}.modal{position:fixed;inset:0;background:#0006;display:none;align-items:flex-end;z-index:20}.modal.show{display:flex}.sheet{background:#fff;border-radius:20px 20px 0 0;width:min(520px,100%);margin:auto;padding:18px;max-height:90vh;overflow:auto}.sheet h2{margin:0 0 16px}.close{float:left;border:0;background:#eee;border-radius:50%;width:34px;height:34px;font-size:18px}
 @media print{header,nav,.report-actions,.filters,.btn{display:none!important}.app{max-width:100%;box-shadow:none}main{padding:0}.section{display:none!important}#reports{display:block!important}.card,.report-stat{break-inside:avoid;box-shadow:none}.report-grid{grid-template-columns:repeat(3,1fr)}body{background:#fff}}
 @media(min-width:600px){body{padding:20px}.app{border-radius:20px;overflow:hidden;box-shadow:0 8px 35px #0002}}
+
+/* Floating Quick Actions */
+.quick-fab{position:fixed;right:max(18px,calc((100vw - 520px)/2 + 18px));bottom:calc(82px + env(safe-area-inset-bottom));z-index:30;width:58px;height:58px;border:0;border-radius:50%;background:linear-gradient(135deg,#0879d1,#0b65b7);color:#fff;font-size:29px;font-weight:700;box-shadow:0 7px 22px #07599b55;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.quick-fab:active{transform:scale(.96)}
+.quick-menu{position:fixed;right:max(18px,calc((100vw - 520px)/2 + 18px));bottom:calc(148px + env(safe-area-inset-bottom));z-index:31;width:min(280px,calc(100vw - 36px));background:#fff;border:1px solid #e5e9ef;border-radius:17px;padding:9px;box-shadow:0 10px 35px #0002;display:none}
+.quick-menu.show{display:block}
+.quick-menu button{width:100%;display:flex;align-items:center;gap:11px;padding:13px 12px;border:0;border-radius:11px;background:#fff;color:#16202a;text-align:right;font:inherit;cursor:pointer}
+.quick-menu button:active,.quick-menu button:hover{background:#eef6ff}
+.quick-menu .quick-icon{width:34px;height:34px;display:flex;align-items:center;justify-content:center;background:#eaf3ff;border-radius:10px;font-size:19px;flex-shrink:0}
+.quick-menu .quick-label{font-weight:700;font-size:14px}
+.quick-menu .quick-sub{display:block;font-size:11px;color:#6b7785;margin-top:2px}
+.quick-backdrop{position:fixed;inset:0;z-index:29;display:none;background:#0001}
+.quick-backdrop.show{display:block}
+@media(min-width:600px){.quick-fab{bottom:calc(90px + env(safe-area-inset-bottom))}}
+
 </style>
 </head>
 <body>
@@ -35,6 +50,17 @@ nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(520px,
 </main>
 <nav style="grid-template-columns:repeat(4,1fr)"><button class="active" data-tab="home" onclick="showTab('home',this)"><span class="ico">🏠</span>الرئيسية</button><button data-tab="history" onclick="showTab('history',this)"><span class="ico">📋</span>السجل</button><button data-tab="reports" onclick="showTab('reports',this)"><span class="ico">📊</span>التقارير</button><button data-tab="settings" onclick="showTab('settings',this)"><span class="ico">⚙️</span>الإعدادات</button></nav>
 </div>
+
+<div id="quickBackdrop" class="quick-backdrop" onclick="toggleQuickActions(false)" aria-hidden="true"></div>
+<div id="quickMenu" class="quick-menu" role="menu" aria-label="الأوامر السريعة">
+  <button type="button" role="menuitem" onclick="quickAction('debt')"><span class="quick-icon">📦</span><span><span class="quick-label">إضافة بضاعة / دين</span><span class="quick-sub">تسجيل دين للعميل الحالي</span></span></button>
+  <button type="button" role="menuitem" onclick="quickAction('payment')"><span class="quick-icon">💵</span><span><span class="quick-label">تسجيل دفعة</span><span class="quick-sub">إضافة دفعة للعميل الحالي</span></span></button>
+  <button type="button" role="menuitem" onclick="quickAction('search')"><span class="quick-icon">🔎</span><span><span class="quick-label">البحث عن عميل</span><span class="quick-sub">الانتقال إلى قائمة العملاء</span></span></button>
+  <button type="button" role="menuitem" onclick="quickAction('reports')"><span class="quick-icon">📊</span><span><span class="quick-label">التقارير</span><span class="quick-sub">فتح تقارير الحساب الحالي</span></span></button>
+  <button type="button" role="menuitem" onclick="quickAction('last')"><span class="quick-icon">🕘</span><span><span class="quick-label">آخر حساب عملت عليه</span><span class="quick-sub">العودة إلى الحساب الحالي</span></span></button>
+</div>
+<button id="quickFab" class="quick-fab" type="button" aria-label="الأوامر السريعة" aria-expanded="false" onclick="toggleQuickActions()" title="الأوامر السريعة">＋</button>
+
 <div id="modal" class="modal"><div class="sheet"><button class="close" onclick="closeModal()">×</button><h2 id="modalTitle">إضافة</h2><div class="field"><label>المبلغ ($)</label><input id="entryAmount" class="input" inputmode="decimal" type="number" min="0.01" step="0.01" placeholder="0.00"></div><div class="field"><label>ملاحظة (اختياري)</label><input id="entryNote" class="input" placeholder="مثلاً: بضاعة جديدة"></div><button id="saveEntry" class="btn primary">حفظ العملية</button><div id="paymentInfo" class="small" style="margin-top:10px"></div></div></div>
 <script>
 const KEY='debt_book_v1';
@@ -107,6 +133,38 @@ function backup(){const payload={format:'debt-book-clients-v1',activeClientId,cl
 function restore(ev){const file=ev.target.files[0];if(!file)return;const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(x.format==='debt-book-clients-v1'&&Array.isArray(x.clients)&&x.clients.length){if(!confirm('استعادة هذه النسخة ستستبدل ملفات العملاء الحالية. هل أخذت نسخة احتياطية؟'))return;clients=x.clients;activeClientId=x.activeClientId||clients[0].id;if(!clients.some(c=>c.id===activeClientId))activeClientId=clients[0].id;data=activeClient().data;persistClients();save();alert('تمت استعادة جميع ملفات العملاء.');}else if(Array.isArray(x.entries)){data=x;activeClient().data=x;activeClient().name=x.name||activeClient().name;save();alert('تمت استعادة بيانات هذا الحساب للعميل الحالي.');}else throw 0;}catch{alert('ملف غير صالح أو غير متوافق.')}};r.readAsText(file);ev.target.value=''}
 function undoLastOperation(){const id=localStorage.getItem('debt_book_last_operation_v1');if(!id){alert('ما في عملية جديدة متاحة للتراجع عنها.');return}const entry=data.entries.find(e=>e.id===id);if(!entry){localStorage.removeItem('debt_book_last_operation_v1');alert('ما لقيت العملية الأخيرة.');return}const label=entry.type==='debt'?'الدين':'الدفعة';if(!confirm('هل تريد التراجع عن آخر عملية؟\n'+label+' بقيمة '+money(entry.amount)+' سيتم إزالته، وسيُعاد احتساب الرصيد وتوزيع الدفعات.'))return;data.entries=data.entries.filter(e=>e.id!==id);localStorage.removeItem('debt_book_last_operation_v1');save();alert('تم التراجع عن آخر عملية بنجاح.');}
 function clearAll(){if(confirm('حذف جميع عمليات العميل الحالي فقط؟ لا يمكن التراجع عن هذا الإجراء.')){data.entries=[];save()}}
+
+function toggleQuickActions(force){
+  const menu=document.getElementById('quickMenu');
+  const backdrop=document.getElementById('quickBackdrop');
+  const fab=document.getElementById('quickFab');
+  const open=typeof force==='boolean'?force:!menu.classList.contains('show');
+  menu.classList.toggle('show',open);
+  backdrop.classList.toggle('show',open);
+  fab.setAttribute('aria-expanded',String(open));
+  fab.textContent=open?'×':'＋';
+}
+function quickAction(action){
+  toggleQuickActions(false);
+  if(action==='debt'||action==='payment'){openEntry(action);return;}
+  if(action==='reports'){showTab('reports',document.querySelector('nav button[data-tab=reports]'));return;}
+  if(action==='search'){
+    showTab('settings',document.querySelector('nav button[data-tab=settings]'));
+    const sel=document.getElementById('clientSelect');
+    if(sel){sel.focus();try{sel.click()}catch(e){}}
+    return;
+  }
+  if(action==='last'){
+    showTab('home',document.querySelector('nav button[data-tab=home]'));
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')toggleQuickActions(false)});
+document.addEventListener('click',e=>{
+  const menu=document.getElementById('quickMenu'),fab=document.getElementById('quickFab');
+  if(menu&&menu.classList.contains('show')&&!menu.contains(e.target)&&!fab.contains(e.target)&&!e.target.closest('#quickBackdrop'))toggleQuickActions(false);
+});
+
 render();
 </script><script>
 // Register the service worker without allowing the browser HTTP cache to hide newer versions.

@@ -65,3 +65,10 @@ After deploying, generate/update the client's link again and open the newly gene
 - The glass-style card shows the credit limit, used debt, available amount, and a horizontal bar representing the **remaining available limit**. Every transaction can be expanded to inspect its amount, date, description, serial reference, resulting balance, and related debt/payment allocation where available.
 - The portal is read-only. The merchant remains the only person who can edit the ledger or credit limit.
 - Existing customer entries are not migrated or deleted by this feature. A missing limit displays as not set until the merchant enters one.
+
+## Customer name header + merchant reports (v9)
+- Customer portal header now displays the actual account owner's name returned by the portal API. The name itself is not translated when the visitor switches English/Arabic; only the surrounding interface changes language.
+- Removed the settings gear from the customer portal header (the customer page remains view-only).
+- Merchant reports are generated from the Reports tab: choose From date and To date, select the client using the client selector at the top of the merchant app, then press Generate Report. CSV/Excel-compatible export and Print/PDF are available. The generated report now prominently names the customer and selected period.
+- Bumped the service-worker cache version so the updated portal can replace a cached older version after deployment.
+- Existing localStorage keys, ledger entries, and D1 schema remain unchanged.

@@ -1,0 +1,11 @@
+تفعيل طلبات العملاء — الملفات المطلوبة
+
+سبب الخطأ الظاهر: الصفحة تتوقع JSON من /api/order، لكنها تستلم HTML. غالباً مسار API غير موجود في كود Worker المنشور أو أن Worker المنشور ليس هذا الملف.
+
+1) ملف worker_customer_orders_v27.js هو كود Worker كامل ويحتوي على /api/order و /api/order-review. لا ترفعه كملف Assets عادي؛ يجب استبدال كود Worker business به من محرر Worker أو نشر المشروع عبر Wrangler.
+2) قبل تجربة الطلبات، نفّذ محتوى 0002_client_orders.sql مرة واحدة فقط في قاعدة D1 business-clients > Console. هذا ينشئ جدول client_orders وفهارسه فقط ولا يحذف بيانات العملاء أو الحركات.
+3) تأكد أن D1 binding اسمه DB ومربوط بقاعدة business-clients، كما في إعداداتك الحالية.
+4) بعد نشر Worker الصحيح، اختبر GET https://business.lixgame.workers.dev/api/health ويجب أن يعيد JSON مثل {"ok":true,...}، ثم جرّب طلباً صغيراً من حساب عميل.
+5) لا تنشر ملفات HTML فقط؛ ذلك لن يضيف API routes إلى Worker.
+
+مهم: لم أنشر أي شيء على حساب Cloudflare الخاص بك، ولم أختبر ذلك على الإنتاج. احتفظ بنسخة من كود Worker الحالي قبل استبداله.

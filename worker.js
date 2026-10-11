@@ -15,6 +15,7 @@ export default {
    }
    // Validate a key before the browser stores it. This endpoint does not reveal the secret.
    if(url.pathname==='/api/verify-key'&&request.method==='POST'){
+    if (url.pathname.startsWith('/api/')) {
     const configuredKey=typeof env.ADMIN_KEY==='string'?env.ADMIN_KEY.trim():'';
     const suppliedKey=(request.headers.get('X-Admin-Key')||'').trim();
     if(!configuredKey)return json({ok:false,error:'ADMIN_KEY غير مضبوط في إعدادات Production لهذا Worker.'},503);

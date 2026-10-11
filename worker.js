@@ -55,20 +55,9 @@ export default {
     const msg=`طلب جديد من ${row.client_name}\nالمبلغ: $${amount.toFixed(2)}\nالتفاصيل: ${details}\nمراجعة الطلب وتعديله والموافقة عليه: ${reviewUrl.toString()}`;
     return json({ok:true,whatsappUrl:'https://wa.me/96181024686?text='+encodeURIComponent(msg),reviewUrl:reviewUrl.toString(),availableAfter:Math.round((available-amount)*100)/100});
    }
-   if(url.pathname==='/api/order-activation'&&request.method==='POST'){
-    let b;try{b=await request.json()}catch{return json({error:'بيانات غير صالحة'},400)};
-    const t=String(b.token||''),action=String(b.action||'');
-    if(!/^[a-f0-9]{64}$/.test(t))return json({error:'رابط المراجعة غير صالح'},400);
-    if(!['activate','deactivate'].includes(action))return json({error:'إجراء غير صالح'},400);
-    const row=await env.DB.prepare('SELECT order_id,client_id,status FROM client_orders WHERE review_token=?').bind(t).first();
-    if(!row)return json({error:'الطلب غير موجود'},404);
-    if(action==='activate'&&row.status!=='pending')return json({error:'لا يمكن تفعيل العميل لطلب تمت معالجته'},409);
-    await env.DB.prepare('UPDATE client_accounts SET active=? WHERE client_id=?').bind(action==='activate'?1:0,row.client_id).run();
-    return json({ok:true,active:action==='activate'});
-   }
    if(url.pathname==='/api/order-review'&&request.method==='GET'){
     const t=String(url.searchParams.get('token')||'');if(!/^[a-f0-9]{64}$/.test(t))return json({error:'رابط المراجعة غير صالح'},400);
-    const row=await env.DB.prepare('SELECT o.order_id,o.client_name,o.client_phone,o.amount,o.details,o.status,o.created_at,o.updated_at,COALESCE(c.active,0) AS client_active FROM client_orders o LEFT JOIN client_accounts c ON c.client_id=o.client_id WHERE o.review_token=?').bind(t).first();
+    const row=await env.DB.prepare('SELECT order_id,client_name,client_phone,amount,details,status,created_at,updated_at FROM client_orders WHERE review_token=?').bind(t).first();
     if(!row)return json({error:'الطلب غير موجود'},404);
     const client=await env.DB.prepare('SELECT payload FROM client_accounts WHERE client_id=? AND active=1').bind((await env.DB.prepare('SELECT client_id FROM client_orders WHERE review_token=?').bind(t).first()).client_id).first();
     let available=0,balance=0,limit=0;if(client){try{const a=JSON.parse(client.payload);limit=Math.max(0,Number(a.creditLimit)||0);balance=accountBalance(a);available=Math.max(0,Math.round((limit-balance)*100)/100)}catch{}}

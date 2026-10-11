@@ -1,17 +1,20 @@
-ملفات ميزة طلبات العملاء — تصحيح النشر
+تصحيح فعلي لمسار طلبات العملاء — دفتر الحساب
 
-محتويات الحزمة:
-- worker.js: يحتوي مسارات /api/order و /api/order-review.
-- 0002_client_orders.sql: ينشئ جدول client_orders في D1.
-- portal.html: نموذج العميل لتقديم الطلب.
-- order-review.html: صفحة مراجعة الطلب وتعديله والموافقة/الرفض.
+ما الذي تغير؟
+- أضيفت معالجة أخطاء حول مسارات /api/* حتى يرجع الخادم JSON عند حصول خطأ، بدل صفحة HTML التي تسبب Unexpected token '<' في بوابة العميل.
+- أُرفق migration إنشاء جدول client_orders المطلوب لطلبات الشراء/الدين.
+- تم فحص صياغة worker.js بواسطة node --check بنجاح.
 
-مهم جداً:
-1) هذه الملفات وحدها لا تغيّر الموقع تلقائياً.
-2) يجب نشر worker.js ككود Worker، وليس رفعه كملف Static Asset فقط.
-3) يجب تطبيق 0002_client_orders.sql على قاعدة D1 المسماة business-clients، مع إبقاء الجداول الحالية وعدم حذفها.
-4) ارفع portal.html و order-review.html كـ assets في جذر الموقع.
-5) ملف wrangler.toml الأصلي يجب أن يبقي binding DB مربوطاً بقاعدة business-clients وأن يوجّه /api/* إلى Worker أولاً.
-6) لا تحذف قاعدة البيانات أو جدول client_accounts.
+قبل النشر:
+1) خذ نسخة احتياطية من مشروع GitHub الحالي.
+2) استبدل worker.js بهذا الملف.
+3) تأكد أن migrations/0002_client_orders.sql موجود في المشروع.
+4) من Terminal داخل المشروع نفّذ:
+   npx wrangler d1 migrations apply business-clients --remote
+5) راجع مخرجات الأمر وتأكد أنه نجح، ثم انشر:
+   npx wrangler deploy
 
-تم فحص صياغة worker.js بـ node --check. لم يتم اختبار النشر على حساب Cloudflare الحقيقي.
+مهم:
+- لا تغيّر اسم قاعدة البيانات أو ربط DB أو Secret ADMIN_KEY.
+- لا تنفّذ migration إذا كانت قد طُبقت سابقاً إلا بعد مراجعة حالة migrations؛ ملف SQL يستخدم IF NOT EXISTS، لكن راجع سجل migrations قبل أي إجراء.
+- هذا الملف لم يُنشر على Production ولم يُختبر ضد قاعدة البيانات الحية.

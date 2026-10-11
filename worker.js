@@ -7,6 +7,7 @@ export default {
  async fetch(request,env){
   const url=new URL(request.url); if(request.method==='OPTIONS') return new Response(null,{headers:corsHeaders});
   if(url.pathname.startsWith('/api/')){
+   try {
    if(url.pathname==='/api/health'&&request.method==='GET'){
     return json({ok:true,databaseConfigured:!!env.DB,adminKeyConfigured:typeof env.ADMIN_KEY==='string'&&env.ADMIN_KEY.trim().length>0,environment:'worker'});
    }
@@ -90,6 +91,11 @@ export default {
     await env.DB.prepare('UPDATE client_accounts SET active=0 WHERE client_id=?').bind(b.id).run();return json({ok:true});
    }
    return json({error:'المسار غير موجود'},404);
+   } catch (error) {
+    // Never let an API exception become Cloudflare's HTML error page; the portal expects JSON.
+    console.error('API request failed:', url.pathname, error?.stack || error);
+    return json({error:'حدث خطأ داخلي في الخادم أثناء معالجة الطلب. تحقق من سجل Worker ومن تطبيق migration 0002_client_orders.'},500);
+   }
   }
    // Cloudflare Assets serves /portal.html directly; only /api/* runs through this Worker.
    return env.ASSETS.fetch(request);

@@ -21,7 +21,9 @@ export default {
     if(!suppliedKey||suppliedKey!==configuredKey)return json({ok:false,error:'المفتاح الذي أدخلته لا يطابق Secret باسم ADMIN_KEY في Worker business ضمن Production. انسخ القيمة نفسها تماماً.'},401);
     return json({ok:true,keyMatches:true});
    }
-   if(!env.DB) return json({error:'قاعدة البيانات D1 غير مربوطة. راجع تعليمات الإعداد.'},503);
+// API routes only; normal page requests must fall through to ASSETS.
+   if (url.pathname.startsWith('/api/')) {
+      if(!env.DB) return json({error:'قاعدة البيانات D1 غير مربوطة. راجع تعليمات الإعداد.'},503);
    if(url.pathname==='/api/order'&&request.method==='POST'){
     let b;try{b=await request.json()}catch{return json({error:'بيانات غير صالحة'},400)};
     const t=String(b.token||'');if(!/^[a-f0-9]{64}$/.test(t))return json({error:'رابط العميل غير صالح'},400);

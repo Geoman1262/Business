@@ -33,6 +33,18 @@ export default {
     if(limit<=0)return json({error:'لا يمكن تقديم طلب قبل أن يحدد صاحب الحساب الحد الائتماني'},400);
     if(balance>=limit)return json({error:'تم بلوغ الحد الائتماني. لا يمكن تقديم طلب جديد.'},400);
     if(amount>available)return json({error:`المبلغ يتجاوز المتاح ائتمانياً. المتاح حالياً $${available.toFixed(2)}`},400);
+    // Safe self-healing for installations where migration 0002 was not applied yet.
+    // CREATE IF NOT EXISTS preserves existing rows and never drops customer data.
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS client_orders (
+      order_id TEXT PRIMARY KEY, review_token TEXT NOT NULL UNIQUE,
+      client_id TEXT NOT NULL, client_name TEXT NOT NULL,
+      client_phone TEXT NOT NULL DEFAULT '', amount REAL NOT NULL,
+      details TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
+      approved_amount REAL, approved_details TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`).run();
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_client_orders_review_token ON client_orders(review_token)').run();
+    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_client_orders_client_status ON client_orders(client_id,status)').run();
     const orderToken=await token(),now=new Date().toISOString(),orderId=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO client_orders(order_id,review_token,client_id,client_name,client_phone,amount,details,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)").bind(orderId,orderToken,row.client_id,row.client_name,row.client_phone,amount,details,now,now).run();
     const reviewUrl=new URL('/order-review.html',url.origin);reviewUrl.searchParams.set('token',orderToken);

@@ -116,7 +116,7 @@ export default {
     const limit=Math.max(0,Number(account.creditLimit)||0),balance=accountBalance(account),available=Math.max(0,Math.round((limit-balance)*100)/100);
     if(limit>0&&amount>available)return json({error:`المبلغ يتجاوز المتاح ائتمانياً ($${available.toFixed(2)}).`},400);
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS client_orders (order_id TEXT PRIMARY KEY,review_token TEXT NOT NULL UNIQUE,client_id TEXT NOT NULL,client_name TEXT NOT NULL,client_phone TEXT NOT NULL DEFAULT '',amount REAL NOT NULL,details TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',approved_amount REAL,approved_details TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)`).run();
-    const orderToken=await token(),now=new Date().toISOString(),orderId=crypto.randomUUID();
+    const orderToken=await token(),orderId=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO client_orders(order_id,review_token,client_id,client_name,client_phone,amount,details,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)").bind(orderId,orderToken,row.client_id,row.client_name,row.client_phone,amount,details,now,now).run();
     const reviewUrl=new URL('/review',url.origin);reviewUrl.searchParams.set('token',orderToken);
     const msg=`مراجعة عملية أدخلها صاحب التطبيق\nالعميل: ${row.client_name}\nالمبلغ: $${amount.toFixed(2)}\nالتفاصيل: ${details}\nرابط مراجعة العملية: ${reviewUrl.toString()}`;

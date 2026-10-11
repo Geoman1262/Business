@@ -7,6 +7,7 @@ export default {
  async fetch(request,env){
   const url=new URL(request.url); if(request.method==='OPTIONS') return new Response(null,{headers:corsHeaders});
   if(url.pathname.startsWith('/api/')){
+   try {
    if(url.pathname==='/api/health'&&request.method==='GET'){
     return json({ok:true,databaseConfigured:!!env.DB,adminKeyConfigured:typeof env.ADMIN_KEY==='string'&&env.ADMIN_KEY.trim().length>0,environment:'worker'});
    }
@@ -90,6 +91,10 @@ export default {
     await env.DB.prepare('UPDATE client_accounts SET active=0 WHERE client_id=?').bind(b.id).run();return json({ok:true});
    }
    return json({error:'المسار غير موجود'},404);
+   } catch (err) {
+    // Keep API failures as JSON so the portal can show the actual D1/Worker error instead of HTML.
+    return json({error:'تعذر تنفيذ طلب API', detail:String(err && err.message ? err.message : err)},500);
+   }
   }
    // Cloudflare Assets serves /portal.html directly; only /api/* runs through this Worker.
    return env.ASSETS.fetch(request);

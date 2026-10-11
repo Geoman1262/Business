@@ -49,7 +49,7 @@ export default {
     )`).run();
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_client_orders_review_token ON client_orders(review_token)').run();
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_client_orders_client_status ON client_orders(client_id,status)').run();
-    const orderToken=await token(),now=new Date().toISOString(),orderId=crypto.randomUUID();
+    const orderToken=await token(),orderId=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO client_orders(order_id,review_token,client_id,client_name,client_phone,amount,details,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)").bind(orderId,orderToken,row.client_id,row.client_name,row.client_phone,amount,details,now,now).run();
     const reviewUrl=new URL('/review', url.origin);reviewUrl.searchParams.set('token',orderToken);
     const msg=`طلب جديد من ${row.client_name}\nالمبلغ: $${amount.toFixed(2)}\nالتفاصيل: ${details}\nمراجعة الطلب وتعديله والموافقة عليه: ${reviewUrl.toString()}`;
@@ -57,7 +57,7 @@ export default {
    }
    if(url.pathname==='/api/order-review'&&request.method==='GET'){
     const t=String(url.searchParams.get('token')||'');if(!/^[a-f0-9]{64}$/.test(t))return json({error:'رابط المراجعة غير صالح'},400);
-    const row=await env.DB.prepare('SELECT order_id,client_name,client_phone,amount,details,status,created_at,updated_at FROM client_orders WHERE review_token=?').bind(t).first();
+    const row=await env.DB.prepare('SELECT order_id,client_id,client_name,client_phone,amount,details,status,created_at,updated_at FROM client_orders WHERE review_token=?').bind(t).first();
     if(!row)return json({error:'الطلب غير موجود'},404);
     const client=await env.DB.prepare('SELECT payload FROM client_accounts WHERE client_id=?').bind((await env.DB.prepare('SELECT client_id FROM client_orders WHERE review_token=?').bind(t).first()).client_id).first();
     let available=0,balance=0,limit=0;if(client){try{const a=JSON.parse(client.payload);limit=Math.max(0,Number(a.creditLimit)||0);balance=accountBalance(a);available=Math.max(0,Math.round((limit-balance)*100)/100)}catch{}}
@@ -70,7 +70,7 @@ export default {
     const row=await env.DB.prepare('SELECT * FROM client_orders WHERE review_token=?').bind(t).first();if(!row)return json({error:'الطلب غير موجود'},404);if(row.status!=='pending')return json({error:'تمت معالجة هذا الطلب مسبقاً',status:row.status},409);
     const now=new Date().toISOString();
     if(action==='reject'){const upd=await env.DB.prepare("UPDATE client_orders SET status='rejected',updated_at=? WHERE order_id=? AND status='pending'").bind(now,row.order_id).run();if(!upd.meta?.changes)return json({error:'تمت معالجة الطلب مسبقاً'},409);return json({ok:true,status:'rejected'})}
-    const amount=Number(b.amount),details=String(b.details||'').trim();if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100)return json({error:'أدخل مبلغاً صحيحاً أكبر من صفر'},400);if(!details)return json({error:'التفاصيل إجبارية'},400);
+    const amount=Number(row.amount),details=String(row.details||'').trim();if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100)return json({error:'مبلغ الطلب غير صالح'},400);if(!details)return json({error:'تفاصيل الطلب فارغة'},400);
     const client=await env.DB.prepare('SELECT payload FROM client_accounts WHERE client_id=?').bind(row.client_id).first();if(!client)return json({error:'حساب العميل غير موجود أو غير فعال'},404);
     let account;try{account=JSON.parse(client.payload)}catch{return json({error:'تعذرت قراءة حساب العميل'},500)};
     const limit=Math.max(0,Number(account.creditLimit)||0),balance=accountBalance(account),available=Math.max(0,Math.round((limit-balance)*100)/100);
@@ -79,7 +79,7 @@ export default {
     const entryId='debt_'+crypto.randomUUID();account.entries.push({id:entryId,type:'debt',amount,note:details,ts:Date.now(),source:'customer_order',orderId:row.order_id});
     const upd=await env.DB.prepare("UPDATE client_orders SET status='approved',approved_amount=?,approved_details=?,updated_at=? WHERE order_id=? AND status='pending'").bind(amount,details,now,row.order_id).run();if(!upd.meta?.changes)return json({error:'تمت معالجة الطلب مسبقاً'},409);
     await env.DB.prepare('UPDATE client_accounts SET payload=?,updated_at=? WHERE client_id=?').bind(JSON.stringify(account),now,row.client_id).run();
-    return json({ok:true,status:'approved',amount,details});
+    return json({ok:true,status:'approved',amount,details,clientId:row.client_id,clientName:row.client_name,orderId:row.order_id,entry:{id:entryId,type:'debt',amount,note:details,ts:Date.now(),source:'customer_order',orderId:row.order_id}});
    }
    if(url.pathname==='/api/portal'&&request.method==='GET'){
     const t=url.searchParams.get('token')||''; if(!/^[a-f0-9]{64}$/.test(t))return json({error:'الرابط غير صالح'},400);
@@ -98,8 +98,20 @@ export default {
     if(!clientId)return json({error:'اختر العميل أولاً'},400);
     if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100)return json({error:'أدخل مبلغاً صحيحاً أكبر من صفر'},400);
     if(!details)return json({error:'اكتب تفاصيل العملية'},400);
-    const row=await env.DB.prepare('SELECT client_id,client_name,client_phone,payload FROM client_accounts WHERE client_id=?').bind(clientId).first();
-    if(!row)return json({error:'لم تتم مزامنة هذا العميل مع قاعدة البيانات. اضغط حفظ/مزامنة الحساب ثم أعد المحاولة.'},404);
+    const snapshot=b.client&&typeof b.client==='object'?b.client:null;
+    if(!snapshot||snapshot.id!==clientId||!snapshot.data||!Array.isArray(snapshot.data.entries))return json({error:'بيانات العميل الحالية ناقصة. ارجع إلى الحساب وحاول مجدداً.'},400);
+    const now=new Date().toISOString();
+    let row=await env.DB.prepare('SELECT client_id,client_name,client_phone,payload,active FROM client_accounts WHERE client_id=?').bind(clientId).first();
+    if(row){
+      // Refresh the server-side snapshot from the owner's current account, without changing activation status.
+      await env.DB.prepare('UPDATE client_accounts SET client_name=?,client_phone=?,payload=?,updated_at=? WHERE client_id=?').bind(String(snapshot.name||snapshot.data.name||'عميل'),String(snapshot.phone||''),JSON.stringify(snapshot.data),now,clientId).run();
+      row={...row,client_name:String(snapshot.name||snapshot.data.name||'عميل'),client_phone:String(snapshot.phone||''),payload:JSON.stringify(snapshot.data)};
+    }else{
+      // Store a new account snapshot as inactive; creating a review request must never activate customer access.
+      const portalToken=await token();
+      await env.DB.prepare('INSERT INTO client_accounts(client_id,token,client_name,client_phone,payload,updated_at,active) VALUES(?,?,?,?,?,?,0)').bind(clientId,portalToken,String(snapshot.name||snapshot.data.name||'عميل'),String(snapshot.phone||''),JSON.stringify(snapshot.data),now).run();
+      row={client_id:clientId,client_name:String(snapshot.name||snapshot.data.name||'عميل'),client_phone:String(snapshot.phone||''),payload:JSON.stringify(snapshot.data),active:0};
+    }
     let account;try{account=JSON.parse(row.payload)}catch{return json({error:'تعذرت قراءة الحساب المحفوظ'},500)};
     const limit=Math.max(0,Number(account.creditLimit)||0),balance=accountBalance(account),available=Math.max(0,Math.round((limit-balance)*100)/100);
     if(limit>0&&amount>available)return json({error:`المبلغ يتجاوز المتاح ائتمانياً ($${available.toFixed(2)}).`},400);

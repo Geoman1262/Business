@@ -1,10 +1,10 @@
-v28 — Request Link + Admin Approval
+إصلاح رابط مراجعة طلب العميل — v28
 
-Workflow:
-1. Customer fills amount and details, then presses “تقديم طلب / Submit request”.
-2. Worker stores the request and creates a secure review token.
-3. The portal displays a WhatsApp link; customer must tap it to open WhatsApp with the message and admin review URL.
-4. Owner taps the review URL inside WhatsApp to open order-review.html, then edits amount/details and approves or rejects.
-5. Only approval records the debt. Repeated approvals are rejected by the Worker.
+التعديل المحدد:
+- رابط مراجعة الطلب يُنشأ الآن صراحةً على https://business.lixgame.workers.dev/order-review.html?token=... بدل الاعتماد على origin قد يكون عنوان Preview.
+- تمت إضافة /order-review.html إلى assets.run_worker_first حتى تمر صفحة المراجعة عبر Worker ثم تُخدم كملف HTML من ASSETS.
+- تسمية زر العميل أصبحت «تقديم طلب»، وبعد إنشاء الطلب يظهر رابط منفصل لفتحه في WhatsApp وإرسال الرسالة يدويًا.
 
-This patch adds CREATE TABLE IF NOT EXISTS for client_orders on order creation, which is safe for existing data and avoids requiring a manual migration for this table. It does not drop or reset any table. Keep the existing DB binding and ADMIN_KEY. Deploy Worker and assets together, then test with a small request before real use.
+انشر ملفات المشروع كاملة من هذه الحزمة مع الحفاظ على قاعدة D1 الحالية وADMIN_KEY. لا تُعد تشغيل migrations الموجودة مسبقًا.
+
+تم فحص صياغة JavaScript محليًا فقط. لم يتم النشر على Cloudflare ولم يتم اختبار قاعدة البيانات الحية.

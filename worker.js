@@ -6,6 +6,13 @@ function accountBalance(account){const entries=Array.isArray(account?.entries)?a
 export default {
  async fetch(request,env){
   const url=new URL(request.url); if(request.method==='OPTIONS') return new Response(null,{headers:corsHeaders});
+  // Always serve the actual review HTML for both review routes, preserving the token query.
+  // This prevents a review link from falling through to an API/health response.
+  if(request.method==='GET' && (url.pathname==='/review' || url.pathname==='/order-review.html')){
+   if(!env.ASSETS) return json({error:'Static assets binding ASSETS is missing.'},503);
+   const target=new URL('/order-review.html',url.origin); target.search=url.search;
+   return env.ASSETS.fetch(new Request(target.toString(),request));
+  }
   if(url.pathname.startsWith('/api/')){
    try {
    if(url.pathname==='/api/health'&&request.method==='GET'){
@@ -47,7 +54,7 @@ export default {
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_client_orders_client_status ON client_orders(client_id,status)').run();
     const orderToken=await token(),now=new Date().toISOString(),orderId=crypto.randomUUID();
     await env.DB.prepare("INSERT INTO client_orders(order_id,review_token,client_id,client_name,client_phone,amount,details,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)").bind(orderId,orderToken,row.client_id,row.client_name,row.client_phone,amount,details,now,now).run();
-    const reviewUrl=new URL('https://business.lixgame.workers.dev/order-review.html');reviewUrl.searchParams.set('token',orderToken);
+    const reviewUrl=new URL('https://business.lixgame.workers.dev/review');reviewUrl.searchParams.set('token',orderToken);
     const msg=`طلب جديد من ${row.client_name}\nالمبلغ: $${amount.toFixed(2)}\nالتفاصيل: ${details}\nمراجعة الطلب وتعديله والموافقة عليه: ${reviewUrl.toString()}`;
     return json({ok:true,whatsappUrl:'https://wa.me/96181024686?text='+encodeURIComponent(msg),reviewUrl:reviewUrl.toString(),availableAfter:Math.round((available-amount)*100)/100});
    }

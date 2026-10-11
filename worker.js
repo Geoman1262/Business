@@ -105,10 +105,6 @@ export default {
     await env.DB.prepare('UPDATE client_accounts SET active=0 WHERE client_id=?').bind(b.id).run();return json({ok:true});
    }
    return json({error:'المسار غير موجود'},404);
-   } catch (err) {
-    // Keep API failures as JSON so the portal can show the actual D1/Worker error instead of HTML.
-    return json({error:'تعذر تنفيذ طلب API', detail:String(err && err.message ? err.message : err)},500);
-   }
   }
    // Cloudflare Assets serves /portal.html directly; only /api/* runs through this Worker.
    return env.ASSETS.fetch(request);

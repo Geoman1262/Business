@@ -1,11 +1,1 @@
-{
-  "name": "دفتر الحساب",
-  "short_name": "دفتر الحساب",
-  "start_url": "./",
-  "display": "standalone",
-  "background_color": "#f5f7fb",
-  "theme_color": "#0879d1",
-  "lang": "ar",
-  "dir": "rtl",
-  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
-}
+{"name":"دفتر الحساب","short_name":"دفتر الحساب","start_url":"/","display":"standalone","background_color":"#f3f6fb","theme_color":"#102a43","lang":"ar","dir":"rtl"}

@@ -1,9 +1,24 @@
-# Daftar AlHesab v20 — Customer transactions + reports
+# دفتر الحساب — النسخة المبسطة
 
-Updated `portal.html` to separate account transactions from reports. The customer portal opens on Account Transactions, shows the latest 3 transactions by default, supports All/Purchases/Payments filters, expands to all transactions, and provides expandable transaction details including amount, balance after transaction, debt paid/remaining, and payment allocations. Reports are in a separate tab and retain date/type filters, CSV export, and print/save PDF.
+هذه نسخة جديدة مبسطة لتدفق واحد فقط: صاحب التطبيق ينشئ رابط العميل، العميل يرسل طلباً، تصل رسالة WhatsApp إلى صاحب التطبيق، وصاحب التطبيق يوافق أو يرفض من صفحة مراجعة معبّأة تلقائياً.
 
-Install: replace only `portal.html` in the existing project, commit/push to GitHub, then deploy Cloudflare Worker as usual. JavaScript syntax was checked with Node; live deployment and browser behavior have not been tested.
+## الملفات
+- `index.html`: لوحة صاحب التطبيق لإضافة العملاء، إنشاء الروابط، عرض الرصيد/الحد الائتماني، وتفعيل أو إيقاف العميل.
+- `portal.html`: صفحة العميل لتقديم طلب بمبلغ وتفاصيل.
+- `order-review.html`: صفحة صاحب التطبيق للموافقة أو الرفض.
+- `worker.js`: API وعمليات D1.
+- `migrations/`: مخطط قاعدة البيانات.
 
+## إعداد Cloudflare
+1. ارفع محتويات هذا المجلد إلى جذر فرع `main` في مستودع المشروع. هذه نسخة جديدة؛ احتفظ بنسخة من ملفاتك القديمة قبل استبدالها.
+2. تأكد أن Worker مربوط بقاعدة D1 الموجودة `business-clients`، وأن Secret اسمه `ADMIN_KEY` مضبوط في Production.
+3. شغّل `npx wrangler deploy`.
+4. افتح الموقع، أدخل قيمة `ADMIN_KEY`، ثم أنشئ روابط العملاء.
+5. Migration `0001_client_accounts.sql` و`0002_client_orders.sql` يستخدمان `CREATE TABLE IF NOT EXISTS` للمحافظة على الجداول والبيانات الموجودة. إذا كانت الجداول موجودة، لا تحذفها ولا تنفّذ أي DROP.
 
-## Fix: admin review route
-The Worker explicitly serves `order-review.html` for both `/review?token=...` and `/order-review.html?token=...`. `wrangler.toml` routes both review paths through the Worker first. New WhatsApp messages use `/review?token=...`. Deploy the Worker and static assets together; keep the existing D1 binding and `ADMIN_KEY` secret. This package has not been deployed to the live Cloudflare account.
+## ملاحظات مهمة
+- لا تتم إضافة دين عند تقديم الطلب؛ الدين يضاف فقط بعد الموافقة.
+- الرفض لا يضيف ديناً.
+- الطلب الذي تمت معالجته لا يمكن اعتماده مرة ثانية.
+- WhatsApp لا يرسل الرسالة تلقائياً؛ يفتح رسالة مجهزة وعلى صاحب الجهاز الضغط على إرسال.
+- هذه النسخة مبسطة ولا تستبدل كل التقارير أو الأدوات القديمة. افحص النسخة على بيئة اختبار قبل اعتمادها على الموقع الفعلي.

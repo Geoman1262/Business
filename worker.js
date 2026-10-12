@@ -1,144 +1,28 @@
-const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,X-Admin-Key' };
-const json = (obj,status=200)=>new Response(JSON.stringify(obj),{status,headers:{'Content-Type':'application/json; charset=utf-8',...corsHeaders,'Cache-Control':'no-store'}});
-const hex = bytes => [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
-async function token(){const b=new Uint8Array(32);crypto.getRandomValues(b);return hex(b)}
-function accountBalance(account){const entries=Array.isArray(account?.entries)?account.entries:[];const debts=entries.filter(e=>e.type==='debt').reduce((n,e)=>n+Math.max(0,Number(e.amount)||0),0);const payments=entries.filter(e=>e.type==='payment').reduce((n,e)=>n+Math.max(0,Number(e.amount)||0),0);return Math.max(0,Math.round((debts-payments)*100)/100)}
-export default {
- async fetch(request,env){
-  const url=new URL(request.url); if(request.method==='OPTIONS') return new Response(null,{headers:corsHeaders});
-  // The admin review URL must always serve the review HTML page, never the health/API response or SPA fallback.
-  if (request.method === 'GET' && (url.pathname === '/review' || url.pathname === '/order-review.html')) {
-    const assetUrl = new URL('/order-review.html', url.origin);
-    assetUrl.search = url.search;
-    const assetRequest = new Request(assetUrl.toString(), request);
-    return env.ASSETS.fetch(assetRequest);
-   }
-   // Validate an admin key only for this endpoint. Keep other API routes reachable.
-   if(url.pathname==='/api/verify-key' && request.method==='POST'){
-    const configuredKey=typeof env.ADMIN_KEY==='string'?env.ADMIN_KEY.trim():'';
-    const suppliedKey=(request.headers.get('X-Admin-Key')||'').trim();
-    if(!configuredKey)return json({ok:false,error:'ADMIN_KEY غير مضبوط في إعدادات Production لهذا Worker.'},503);
-    if(!suppliedKey||suppliedKey!==configuredKey)return json({ok:false,error:'المفتاح الذي أدخلته لا يطابق Secret باسم ADMIN_KEY في Worker business ضمن Production. انسخ القيمة نفسها تماماً.'},401);
-    return json({ok:true,keyMatches:true});
-   }
-   // All API endpoints are handled here; page requests must fall through to static assets.
-   if (url.pathname.startsWith('/api/')) {
-   if(!env.DB) return json({error:'قاعدة البيانات D1 غير مربوطة. راجع تعليمات الإعداد.'},503);
-   if(url.pathname==='/api/order'&&request.method==='POST'){
-    let b;try{b=await request.json()}catch{return json({error:'بيانات غير صالحة'},400)};
-    const t=String(b.token||'');if(!/^[a-f0-9]{64}$/.test(t))return json({error:'رابط العميل غير صالح'},400);
-    const amount=Number(b.amount),details=String(b.details||'').trim();
-    if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100)return json({error:'أدخل مبلغاً صحيحاً أكبر من صفر'},400);
-    if(!details)return json({error:'التفاصيل إجبارية'},400);
-    const row=await env.DB.prepare('SELECT client_id,client_name,client_phone,payload FROM client_accounts WHERE token=? AND active=1').bind(t).first();
-    if(!row)return json({error:'رابط العميل غير موجود أو غير فعال'},404);
-    let account;try{account=JSON.parse(row.payload)}catch{return json({error:'تعذرت قراءة الحساب'},500)};
-    const limit=Math.max(0,Number(account.creditLimit)||0),balance=accountBalance(account),available=Math.max(0,Math.round((limit-balance)*100)/100);
-    if(limit<=0)return json({error:'لا يمكن تقديم طلب قبل أن يحدد صاحب الحساب الحد الائتماني'},400);
-    if(balance>=limit)return json({error:'تم بلوغ الحد الائتماني. لا يمكن تقديم طلب جديد.'},400);
-    if(amount>available)return json({error:`المبلغ يتجاوز المتاح ائتمانياً. المتاح حالياً $${available.toFixed(2)}`},400);
-    // Safe self-healing for installations where migration 0002 was not applied yet.
-    // CREATE IF NOT EXISTS preserves existing rows and never drops customer data.
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS client_orders (
-      order_id TEXT PRIMARY KEY, review_token TEXT NOT NULL UNIQUE,
-      client_id TEXT NOT NULL, client_name TEXT NOT NULL,
-      client_phone TEXT NOT NULL DEFAULT '', amount REAL NOT NULL,
-      details TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
-      approved_amount REAL, approved_details TEXT,
-      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-    )`).run();
-    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_client_orders_review_token ON client_orders(review_token)').run();
-    await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_client_orders_client_status ON client_orders(client_id,status)').run();
-    const orderToken=await token(),orderId=crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO client_orders(order_id,review_token,client_id,client_name,client_phone,amount,details,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)").bind(orderId,orderToken,row.client_id,row.client_name,row.client_phone,amount,details,now,now).run();
-    const reviewUrl=new URL('/review', url.origin);reviewUrl.searchParams.set('token',orderToken);
-    const msg=`طلب جديد من ${row.client_name}\nالمبلغ: $${amount.toFixed(2)}\nالتفاصيل: ${details}\nمراجعة الطلب وتعديله والموافقة عليه: ${reviewUrl.toString()}`;
-    return json({ok:true,whatsappUrl:'https://wa.me/96181024686?text='+encodeURIComponent(msg),reviewUrl:reviewUrl.toString(),availableAfter:Math.round((available-amount)*100)/100});
-   }
-   if(url.pathname==='/api/order-review'&&request.method==='GET'){
-    const t=String(url.searchParams.get('token')||'');if(!/^[a-f0-9]{64}$/.test(t))return json({error:'رابط المراجعة غير صالح'},400);
-    const row=await env.DB.prepare('SELECT order_id,client_id,client_name,client_phone,amount,details,status,created_at,updated_at FROM client_orders WHERE review_token=?').bind(t).first();
-    if(!row)return json({error:'الطلب غير موجود'},404);
-    const client=await env.DB.prepare('SELECT payload FROM client_accounts WHERE client_id=?').bind((await env.DB.prepare('SELECT client_id FROM client_orders WHERE review_token=?').bind(t).first()).client_id).first();
-    let available=0,balance=0,limit=0;if(client){try{const a=JSON.parse(client.payload);limit=Math.max(0,Number(a.creditLimit)||0);balance=accountBalance(a);available=Math.max(0,Math.round((limit-balance)*100)/100)}catch{}}
-    return json({...row,available,balance,limit});
-   }
-   if(url.pathname==='/api/order-review'&&request.method==='POST'){
-    let b;try{b=await request.json()}catch{return json({error:'بيانات غير صالحة'},400)};
-    const t=String(b.token||'');if(!/^[a-f0-9]{64}$/.test(t))return json({error:'رابط المراجعة غير صالح'},400);
-    const action=String(b.action||'');if(!['approve','reject'].includes(action))return json({error:'إجراء غير صالح'},400);
-    const row=await env.DB.prepare('SELECT * FROM client_orders WHERE review_token=?').bind(t).first();if(!row)return json({error:'الطلب غير موجود'},404);if(row.status!=='pending')return json({error:'تمت معالجة هذا الطلب مسبقاً',status:row.status},409);
-    const now=new Date().toISOString();
-    if(action==='reject'){const upd=await env.DB.prepare("UPDATE client_orders SET status='rejected',updated_at=? WHERE order_id=? AND status='pending'").bind(now,row.order_id).run();if(!upd.meta?.changes)return json({error:'تمت معالجة الطلب مسبقاً'},409);return json({ok:true,status:'rejected'})}
-    const amount=Number(row.amount),details=String(row.details||'').trim();if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100)return json({error:'مبلغ الطلب غير صالح'},400);if(!details)return json({error:'تفاصيل الطلب فارغة'},400);
-    const client=await env.DB.prepare('SELECT payload FROM client_accounts WHERE client_id=?').bind(row.client_id).first();if(!client)return json({error:'حساب العميل غير موجود أو غير فعال'},404);
-    let account;try{account=JSON.parse(client.payload)}catch{return json({error:'تعذرت قراءة حساب العميل'},500)};
-    const limit=Math.max(0,Number(account.creditLimit)||0),balance=accountBalance(account),available=Math.max(0,Math.round((limit-balance)*100)/100);
-    if(limit<=0||balance>=limit||amount>available)return json({error:`الحد الائتماني تغيّر أو المبلغ يتجاوز المتاح حالياً ($${available.toFixed(2)}). عدّل الطلب قبل الموافقة.`},409);
-    if(!Array.isArray(account.entries))account.entries=[];
-    const entryId='debt_'+crypto.randomUUID();account.entries.push({id:entryId,type:'debt',amount,note:details,ts:Date.now(),source:'customer_order',orderId:row.order_id});
-    const upd=await env.DB.prepare("UPDATE client_orders SET status='approved',approved_amount=?,approved_details=?,updated_at=? WHERE order_id=? AND status='pending'").bind(amount,details,now,row.order_id).run();if(!upd.meta?.changes)return json({error:'تمت معالجة الطلب مسبقاً'},409);
-    await env.DB.prepare('UPDATE client_accounts SET payload=?,updated_at=? WHERE client_id=?').bind(JSON.stringify(account),now,row.client_id).run();
-    return json({ok:true,status:'approved',amount,details,clientId:row.client_id,clientName:row.client_name,orderId:row.order_id,entry:{id:entryId,type:'debt',amount,note:details,ts:Date.now(),source:'customer_order',orderId:row.order_id}});
-   }
-   if(url.pathname==='/api/portal'&&request.method==='GET'){
-    const t=url.searchParams.get('token')||''; if(!/^[a-f0-9]{64}$/.test(t))return json({error:'الرابط غير صالح'},400);
-    const row=await env.DB.prepare('SELECT client_name, client_phone, payload, updated_at FROM client_accounts WHERE token=? AND active=1').bind(t).first();
-    if(!row)return json({error:'الرابط غير موجود أو تم إلغاؤه'},404);
-    let payload;try{payload=JSON.parse(row.payload)}catch{return json({error:'تعذّر قراءة الحساب'},500)};
-    return json({name:row.client_name,phone:row.client_phone,updatedAt:row.updated_at,account:payload});
-   }
-   const configuredKey=typeof env.ADMIN_KEY==='string'?env.ADMIN_KEY.trim():'';
-   const suppliedKey=(request.headers.get('X-Admin-Key')||'').trim();
-   if(!configuredKey)return json({error:'ADMIN_KEY غير مضبوط على Worker لهذه البيئة. أضفه ضمن Production Secrets ثم أعد النشر.'},503);
-   if(!suppliedKey||suppliedKey!==configuredKey)return json({error:'المفتاح المرسل لا يطابق ADMIN_KEY المحفوظ في هذا Worker. احفظ المفتاح الصحيح في إعدادات التطبيق.'},401);
-   if(url.pathname==='/api/admin-order'&&request.method==='POST'){
-    let b;try{b=await request.json()}catch{return json({error:'بيانات غير صالحة'},400)};
-    const clientId=String(b.clientId||''),amount=Number(b.amount),details=String(b.details||'').trim();
-    if(!clientId)return json({error:'اختر العميل أولاً'},400);
-    if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100)return json({error:'أدخل مبلغاً صحيحاً أكبر من صفر'},400);
-    if(!details)return json({error:'اكتب تفاصيل العملية'},400);
-    const snapshot=b.client&&typeof b.client==='object'?b.client:null;
-    if(!snapshot||snapshot.id!==clientId||!snapshot.data||!Array.isArray(snapshot.data.entries))return json({error:'بيانات العميل الحالية ناقصة. ارجع إلى الحساب وحاول مجدداً.'},400);
-    const now=new Date().toISOString();
-    let row=await env.DB.prepare('SELECT client_id,client_name,client_phone,payload,active FROM client_accounts WHERE client_id=?').bind(clientId).first();
-    if(row){
-      // Refresh the server-side snapshot from the owner's current account, without changing activation status.
-      await env.DB.prepare('UPDATE client_accounts SET client_name=?,client_phone=?,payload=?,updated_at=? WHERE client_id=?').bind(String(snapshot.name||snapshot.data.name||'عميل'),String(snapshot.phone||''),JSON.stringify(snapshot.data),now,clientId).run();
-      row={...row,client_name:String(snapshot.name||snapshot.data.name||'عميل'),client_phone:String(snapshot.phone||''),payload:JSON.stringify(snapshot.data)};
-    }else{
-      // Store a new account snapshot as inactive; creating a review request must never activate customer access.
-      const portalToken=await token();
-      await env.DB.prepare('INSERT INTO client_accounts(client_id,token,client_name,client_phone,payload,updated_at,active) VALUES(?,?,?,?,?,?,0)').bind(clientId,portalToken,String(snapshot.name||snapshot.data.name||'عميل'),String(snapshot.phone||''),JSON.stringify(snapshot.data),now).run();
-      row={client_id:clientId,client_name:String(snapshot.name||snapshot.data.name||'عميل'),client_phone:String(snapshot.phone||''),payload:JSON.stringify(snapshot.data),active:0};
-    }
-    let account;try{account=JSON.parse(row.payload)}catch{return json({error:'تعذرت قراءة الحساب المحفوظ'},500)};
-    const limit=Math.max(0,Number(account.creditLimit)||0),balance=accountBalance(account),available=Math.max(0,Math.round((limit-balance)*100)/100);
-    if(limit>0&&amount>available)return json({error:`المبلغ يتجاوز المتاح ائتمانياً ($${available.toFixed(2)}).`},400);
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS client_orders (order_id TEXT PRIMARY KEY,review_token TEXT NOT NULL UNIQUE,client_id TEXT NOT NULL,client_name TEXT NOT NULL,client_phone TEXT NOT NULL DEFAULT '',amount REAL NOT NULL,details TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',approved_amount REAL,approved_details TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)`).run();
-    const orderToken=await token(),orderId=crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO client_orders(order_id,review_token,client_id,client_name,client_phone,amount,details,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)").bind(orderId,orderToken,row.client_id,row.client_name,row.client_phone,amount,details,now,now).run();
-    const reviewUrl=new URL('/review',url.origin);reviewUrl.searchParams.set('token',orderToken);
-    const msg=`مراجعة عملية أدخلها صاحب التطبيق\nالعميل: ${row.client_name}\nالمبلغ: $${amount.toFixed(2)}\nالتفاصيل: ${details}\nرابط مراجعة العملية: ${reviewUrl.toString()}`;
-    return json({ok:true,reviewUrl:reviewUrl.toString(),whatsappUrl:'https://wa.me/96181024686?text='+encodeURIComponent(msg)});
-   }
-   if(url.pathname==='/api/client'&&request.method==='POST'){
-    let b;try{b=await request.json()}catch{return json({error:'بيانات غير صالحة'},400)};
-    if(!b||typeof b.id!=='string'||typeof b.name!=='string'||!b.data||!Array.isArray(b.data.entries))return json({error:'حقول العميل ناقصة'},400);
-    const now=new Date().toISOString();
-    const existing=await env.DB.prepare('SELECT token FROM client_accounts WHERE client_id=?').bind(b.id).first();
-    const t=existing?.token||await token();
-    await env.DB.prepare(`INSERT INTO client_accounts(client_id,token,client_name,client_phone,payload,updated_at,active) VALUES(?,?,?,?,?,?,1) ON CONFLICT(client_id) DO UPDATE SET client_name=excluded.client_name,client_phone=excluded.client_phone,payload=excluded.payload,updated_at=excluded.updated_at,active=1`).bind(b.id,t,b.name,String(b.phone||''),JSON.stringify(b.data),now).run();
-    return json({ok:true,token:t,updatedAt:now,portalUrl:'https://business.lixgame.workers.dev/portal.html?token='+t});
-   }
-   if(url.pathname==='/api/revoke'&&request.method==='POST'){
-    let b;try{b=await request.json()}catch{return json({error:'بيانات غير صالحة'},400)};
-    if(typeof b.id!=='string')return json({error:'معرّف غير صالح'},400);
-    await env.DB.prepare('UPDATE client_accounts SET active=0 WHERE client_id=?').bind(b.id).run();return json({ok:true});
-   }
-   return json({error:'المسار غير موجود'},404);
-  }
-   // Cloudflare Assets serves /portal.html directly; only /api/* runs through this Worker.
-   return env.ASSETS.fetch(request);
- }
-};
+const HEADERS={"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store","Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type,X-Admin-Key"};
+const reply=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:HEADERS});
+const fail=(message,status=400)=>reply({ok:false,error:message},status);
+const makeToken=()=>{const b=new Uint8Array(32);crypto.getRandomValues(b);return [...b].map(x=>x.toString(16).padStart(2,"0")).join("")};
+const money=n=>Math.round((Number(n)||0)*100)/100;
+function balance(a){const e=Array.isArray(a?.entries)?a.entries:[];return money(e.reduce((s,x)=>s+(x.type==="debt"?Math.abs(Number(x.amount)||0):x.type==="payment"?-Math.abs(Number(x.amount)||0):0),0));}
+function auth(req,env){const expected=String(env.ADMIN_KEY||"").trim();return !!expected&&String(req.headers.get("X-Admin-Key")||"").trim()===expected;}
+async function body(req){try{return await req.json()}catch{return null}}
+async function ensureOrders(db){await db.prepare(`CREATE TABLE IF NOT EXISTS client_orders(order_id TEXT PRIMARY KEY,review_token TEXT NOT NULL UNIQUE,client_id TEXT NOT NULL,client_name TEXT NOT NULL,client_phone TEXT NOT NULL DEFAULT '',amount REAL NOT NULL,details TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',approved_amount REAL,approved_details TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)`).run();await db.prepare("CREATE INDEX IF NOT EXISTS idx_orders_token ON client_orders(review_token)").run();}
+export default {async fetch(req,env){const u=new URL(req.url);if(req.method==="OPTIONS")return new Response(null,{headers:HEADERS});
+if(u.pathname==="/"||u.pathname==="/index.html")return env.ASSETS.fetch(req);
+if(u.pathname==="/review")return env.ASSETS.fetch(new Request(new URL("/review.html"+u.search,u.origin),req));
+if(!u.pathname.startsWith("/api/"))return env.ASSETS.fetch(req);
+if(!env.DB)return fail("قاعدة D1 غير مربوطة بهذا الـ Worker.",503);
+try{
+if(u.pathname==="/api/health"&&req.method==="GET"){await env.DB.prepare("SELECT 1 AS ok").first();return reply({ok:true,db:true});}
+if(u.pathname==="/api/admin/login"&&req.method==="POST"){if(!env.ADMIN_KEY)return fail("أضف Secret باسم ADMIN_KEY في Cloudflare.",503);if(!auth(req,env))return fail("رمز الدخول غير صحيح.",401);return reply({ok:true});}
+if(u.pathname==="/api/admin/clients"&&req.method==="GET") {if(!auth(req,env))return fail("يلزم تسجيل الدخول.",401);const rows=await env.DB.prepare("SELECT client_id,token,client_name,client_phone,payload,updated_at,active FROM client_accounts ORDER BY client_name COLLATE NOCASE").all();return reply({ok:true,clients:(rows.results||[]).map(r=>{let account={};try{account=JSON.parse(r.payload||"{}")}catch{}return {...r,account,balance:balance(account)}})});}
+if(u.pathname==="/api/admin/clients"&&req.method==="POST"){if(!auth(req,env))return fail("يلزم تسجيل الدخول.",401);const b=await body(req);if(!b||!String(b.name||"").trim())return fail("اكتب اسم العميل.");const id=String(b.id||crypto.randomUUID()),name=String(b.name).trim(),phone=String(b.phone||"").trim(),limit=money(b.creditLimit);if(limit<0)return fail("الحد الائتماني غير صحيح.");const old=await env.DB.prepare("SELECT token,payload,active FROM client_accounts WHERE client_id=?").bind(id).first();let account;try{account=old?JSON.parse(old.payload||"{}"):{};}catch{account={};}account.name=name;account.phone=phone;account.creditLimit=limit;if(!Array.isArray(account.entries))account.entries=[];const t=old?.token||makeToken(),now=new Date().toISOString();await env.DB.prepare("INSERT INTO client_accounts(client_id,token,client_name,client_phone,payload,updated_at,active) VALUES(?,?,?,?,?,?,?) ON CONFLICT(client_id) DO UPDATE SET client_name=excluded.client_name,client_phone=excluded.client_phone,payload=excluded.payload,updated_at=excluded.updated_at").bind(id,t,name,phone,JSON.stringify(account),now,old?Number(old.active):1).run();return reply({ok:true,id,token:t,portalUrl:new URL("/portal.html?token="+t,u.origin).toString()});}
+if(u.pathname==="/api/admin/clients/active"&&req.method==="POST"){if(!auth(req,env))return fail("يلزم تسجيل الدخول.",401);const b=await body(req);if(!b?.id)return fail("معرّف العميل ناقص.");await env.DB.prepare("UPDATE client_accounts SET active=?,updated_at=? WHERE client_id=?").bind(b.active?1:0,new Date().toISOString(),String(b.id)).run();return reply({ok:true});}
+if(u.pathname==="/api/admin/entry"&&req.method==="POST"){if(!auth(req,env))return fail("يلزم تسجيل الدخول.",401);const b=await body(req);const id=String(b?.id||""),type=String(b?.type||""),amount=money(b?.amount),note=String(b?.note||"").trim();if(!id||!['debt','payment'].includes(type)||amount<=0||!note)return fail("أدخل نوع العملية والمبلغ والتفاصيل.");const r=await env.DB.prepare("SELECT payload FROM client_accounts WHERE client_id=?").bind(id).first();if(!r)return fail("العميل غير موجود.",404);let a;try{a=JSON.parse(r.payload)}catch{return fail("بيانات حساب العميل غير قابلة للقراءة.",500)}if(!Array.isArray(a.entries))a.entries=[];a.entries.push({id:crypto.randomUUID(),type,amount,note,ts:Date.now(),source:"owner"});await env.DB.prepare("UPDATE client_accounts SET payload=?,updated_at=? WHERE client_id=?").bind(JSON.stringify(a),new Date().toISOString(),id).run();return reply({ok:true,balance:balance(a)});}
+if(u.pathname==="/api/portal"&&req.method==="GET"){const t=u.searchParams.get("token")||"";if(!/^[a-f0-9]{64}$/.test(t))return fail("رابط العميل غير صالح.",400);const r=await env.DB.prepare("SELECT client_name,client_phone,payload,active,updated_at FROM client_accounts WHERE token=?").bind(t).first();if(!r)return fail("رابط العميل غير موجود.",404);if(!r.active)return fail("حساب العميل موقوف مؤقتاً. تواصل مع صاحب الحساب.",403);let a;try{a=JSON.parse(r.payload)}catch{return fail("تعذرت قراءة بيانات الحساب.",500)}return reply({ok:true,name:r.client_name,phone:r.client_phone,account:a,balance:balance(a),updatedAt:r.updated_at});}
+if(u.pathname==="/api/request"&&req.method==="POST"){const b=await body(req);const t=String(b?.token||""),amount=money(b?.amount),details=String(b?.details||"").trim();if(!/^[a-f0-9]{64}$/.test(t))return fail("رابط العميل غير صالح.",400);if(amount<=0||!details)return fail("أدخل المبلغ والتفاصيل.",400);const c=await env.DB.prepare("SELECT client_id,client_name,client_phone,payload,active FROM client_accounts WHERE token=?").bind(t).first();if(!c)return fail("رابط العميل غير موجود.",404);if(!c.active)return fail("الحساب موقوف. تواصل مع صاحب الحساب.",403);let a;try{a=JSON.parse(c.payload)}catch{return fail("تعذرت قراءة الحساب.",500)}const available=Math.max(0,money((Number(a.creditLimit)||0)-balance(a)));if(amount>available)return fail(`المبلغ يتجاوز المتاح ($${available.toFixed(2)}).`,400);await ensureOrders(env.DB);const tok=makeToken(),id=crypto.randomUUID(),now=new Date().toISOString();await env.DB.prepare("INSERT INTO client_orders(order_id,review_token,client_id,client_name,client_phone,amount,details,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'pending',?,?)").bind(id,tok,c.client_id,c.client_name,c.client_phone,amount,details,now,now).run();const reviewUrl=new URL("/review?token="+tok,u.origin).toString();const message=`طلب جديد من ${c.client_name}\nالمبلغ: $${amount.toFixed(2)}\nالتفاصيل: ${details}\nمراجعة الطلب: ${reviewUrl}`;return reply({ok:true,reviewUrl,whatsappUrl:"https://wa.me/96181024686?text="+encodeURIComponent(message)});}
+if(u.pathname==="/api/review"&&req.method==="GET"){const t=u.searchParams.get("token")||"";if(!/^[a-f0-9]{64}$/.test(t))return fail("رابط المراجعة غير صالح.",400);await ensureOrders(env.DB);const r=await env.DB.prepare("SELECT * FROM client_orders WHERE review_token=?").bind(t).first();if(!r)return fail("الطلب غير موجود.",404);const c=await env.DB.prepare("SELECT payload,active FROM client_accounts WHERE client_id=?").bind(r.client_id).first();let a={};try{a=JSON.parse(c?.payload||"{}")}catch{}return reply({ok:true,order:r,clientActive:!!c?.active,balance:balance(a),creditLimit:money(a.creditLimit),available:Math.max(0,money((Number(a.creditLimit)||0)-balance(a)))});}
+if(u.pathname==="/api/review"&&req.method==="POST"){if(!auth(req,env))return fail("سجّل دخول صاحب التطبيق أولاً في هذه الصفحة.",401);const b=await body(req),t=String(b?.token||""),action=String(b?.action||"");if(!/^[a-f0-9]{64}$/.test(t)||!['approve','reject'].includes(action))return fail("بيانات الطلب غير صالحة.");await ensureOrders(env.DB);const r=await env.DB.prepare("SELECT * FROM client_orders WHERE review_token=?").bind(t).first();if(!r)return fail("الطلب غير موجود.",404);if(r.status!=="pending")return fail("تمت معالجة هذا الطلب مسبقاً.",409);const now=new Date().toISOString();if(action==="reject"){const q=await env.DB.prepare("UPDATE client_orders SET status='rejected',updated_at=? WHERE order_id=? AND status='pending'").bind(now,r.order_id).run();if(!q.meta?.changes)return fail("تمت معالجة الطلب مسبقاً.",409);return reply({ok:true,status:"rejected"});}const c=await env.DB.prepare("SELECT payload FROM client_accounts WHERE client_id=?").bind(r.client_id).first();if(!c)return fail("حساب العميل غير موجود.",404);let a;try{a=JSON.parse(c.payload)}catch{return fail("تعذرت قراءة حساب العميل.",500)}const amount=money(r.amount),available=Math.max(0,money((Number(a.creditLimit)||0)-balance(a)));if(amount>available)return fail(`المبلغ يتجاوز المتاح حالياً ($${available.toFixed(2)}).`,409);if(!Array.isArray(a.entries))a.entries=[];a.entries.push({id:"order_"+r.order_id,type:"debt",amount,note:r.details,ts:Date.now(),source:"customer_request",orderId:r.order_id});const q=await env.DB.prepare("UPDATE client_orders SET status='approved',approved_amount=?,approved_details=?,updated_at=? WHERE order_id=? AND status='pending'").bind(amount,r.details,now,r.order_id).run();if(!q.meta?.changes)return fail("تمت معالجة الطلب مسبقاً.",409);await env.DB.prepare("UPDATE client_accounts SET payload=?,updated_at=? WHERE client_id=?").bind(JSON.stringify(a),now,r.client_id).run();return reply({ok:true,status:"approved"});}
+return fail("مسار API غير موجود.",404);
+}catch(e){return fail("خطأ في السيرفر: "+String(e?.message||e),500);}
+}};

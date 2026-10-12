@@ -12,5 +12,5 @@ CREATE TABLE IF NOT EXISTS client_orders (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_client_orders_review_token ON client_orders(review_token);
-CREATE INDEX IF NOT EXISTS idx_client_orders_client_status ON client_orders(client_id,status);
+CREATE INDEX IF NOT EXISTS idx_orders_token ON client_orders(review_token);
+CREATE INDEX IF NOT EXISTS idx_orders_client_status ON client_orders(client_id,status);

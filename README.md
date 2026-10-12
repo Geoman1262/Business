@@ -1,23 +1,9 @@
-# دفتر الحساب — نسخة مبسطة جديدة
+# Daftar AlHesab v20 — Customer transactions + reports
 
-## الملفات
-- `index.html`: لوحة صاحب التطبيق (إدارة العملاء، حدود الائتمان، الدين والدفعات، تفعيل/إيقاف، نسخ رابط العميل).
-- `portal.html`: العميل يشاهد رصيده وحركاته ويرسل طلباً. إرسال الطلب لا يسجل ديناً.
-- `review.html`: مراجعة الطلب، الموافقة أو الرفض. الموافقة تسجل الدين، والرفض لا يسجل شيئاً.
-- `worker.js`: API وعمليات D1.
+Updated `portal.html` to separate account transactions from reports. The customer portal opens on Account Transactions, shows the latest 3 transactions by default, supports All/Purchases/Payments filters, expands to all transactions, and provides expandable transaction details including amount, balance after transaction, debt paid/remaining, and payment allocations. Reports are in a separate tab and retain date/type filters, CSV export, and print/save PDF.
 
-## إعداد Cloudflare
-1. ارفع محتويات المجلد إلى جذر فرع `main` في مستودع GitHub. احتفظ بنسخة احتياطية من ملفاتك الحالية قبل الاستبدال.
-2. تأكد أن Worker مربوط بقاعدة D1 المسماة `business-clients` وبالمعرّف الموجود في `wrangler.toml`.
-3. تأكد من وجود Worker Secret باسم `ADMIN_KEY`.
-4. انشر بالأمر `npx wrangler deploy`.
-5. إذا كانت قاعدة D1 جديدة فقط، طبّق migrations. إذا كانت قاعدة البيانات الحالية فيها جدول `client_accounts` فلا تحذفها ولا تعِد إنشاءها. `client_orders` يُنشأ تلقائياً عند أول طلب.
+Install: replace only `portal.html` in the existing project, commit/push to GitHub, then deploy Cloudflare Worker as usual. JavaScript syntax was checked with Node; live deployment and browser behavior have not been tested.
 
-## اختبار أولي بعد النشر
-- افتح `/api/health` ويجب أن يعرض JSON فيه `"ok":true`.
-- افتح الصفحة الرئيسية وسجّل دخولك باستخدام قيمة `ADMIN_KEY`.
-- أضف عميلًا، انسخ رابطه، وافتحه في نافذة خاصة لتقديم طلب تجريبي.
-- افتح رابط المراجعة المرسل إلى واتساب، أدخل `ADMIN_KEY` وجرّب الموافقة أو الرفض.
 
-## تنبيه
-هذه نسخة مبسطة جديدة وليست منشورة تلقائياً. لا تحذف قاعدة البيانات القديمة. اختبر أولاً بعميل وطلب تجريبيين قبل الاعتماد عليها.
+## Fix: admin review route
+The Worker explicitly serves `order-review.html` for both `/review?token=...` and `/order-review.html?token=...`. `wrangler.toml` routes both review paths through the Worker first. New WhatsApp messages use `/review?token=...`. Deploy the Worker and static assets together; keep the existing D1 binding and `ADMIN_KEY` secret. This package has not been deployed to the live Cloudflare account.

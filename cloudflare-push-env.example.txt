@@ -1,0 +1,13 @@
+# Cloudflare Worker secrets needed for Web Push
+# Generate VAPID keys with a trusted Web Push/VAPID key generator or tooling.
+# Store the PRIVATE key as a Cloudflare secret, never in client-side code.
+# VAPID_PUBLIC_KEY = public key exposed by GET /api/push/public-key
+# VAPID_PRIVATE_KEY = secret private key
+# VAPID_SUBJECT = mailto:admin@example.com
+#
+# The existing worker still needs implementation for:
+# - GET /api/push/public-key
+# - POST /api/portal/push-subscription (validate token, bind subscription to client_id)
+# - send push after a debt entry is saved
+# - send push after a payment entry is saved
+# - delete expired subscriptions on HTTP 404/410

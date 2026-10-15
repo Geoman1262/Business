@@ -1,0 +1,32 @@
+<!-- Additive UI fragment for the existing admin customer detail view. Do not replace index.html. -->
+<section id="deviceManagementPanel" dir="rtl" style="margin-top:16px;padding:16px;border:1px solid #d7e0ea;border-radius:14px;background:#fff">
+  <h3 style="margin:0 0 8px">الأجهزة ونشاط العميل</h3>
+  <p style="margin:0 0 12px;color:#52606d;font-size:13px">اختر عميلاً من لوحة الإدارة ثم استدعِ loadCustomerDevices(customerId).</p>
+  <div id="deviceRows">لم يتم تحميل الأجهزة بعد.</div>
+  <h4>سجل الزيارات والمحاولات</h4><div id="deviceEvents">—</div>
+</section>
+<script>
+async function loadCustomerDevices(customerId) {
+  const rows = document.getElementById('deviceRows'), events = document.getElementById('deviceEvents');
+  rows.textContent = 'جارٍ التحميل…'; events.textContent = 'جارٍ التحميل…';
+  const [dr, er] = await Promise.all([
+    fetch('/api/admin/customer-devices?customerId='+encodeURIComponent(customerId), {cache:'no-store'}),
+    fetch('/api/admin/customer-device-events?customerId='+encodeURIComponent(customerId)+'&limit=100', {cache:'no-store'})
+  ]);
+  if (!dr.ok || !er.ok) { rows.textContent = 'تعذّر تحميل البيانات.'; events.textContent=''; return; }
+  const d = await dr.json(), e = await er.json();
+  rows.replaceChildren();
+  for (const x of (d.devices || [])) {
+    const card = document.createElement('div'); card.style.cssText='border:1px solid #e5eaf0;border-radius:10px;padding:10px;margin:8px 0';
+    const title = document.createElement('strong'); title.textContent = x.label+' — '+(x.platform||'غير معروف'); card.append(title);
+    const info = document.createElement('p'); info.textContent = `IP: ${x.ip_address||'—'} | أول ظهور: ${x.first_seen_at} | آخر ظهور: ${x.last_seen_at} | الحالة: ${x.locked?'مقفول':'مفتوح'}`; card.append(info);
+    const btn = document.createElement('button'); btn.type='button'; btn.textContent=x.locked?'🔓 فتح الجهاز':'🔒 إقفال الجهاز';
+    btn.addEventListener('click', async()=>{ btn.disabled=true; try { const r=await fetch('/api/admin/customer-devices/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deviceId:x.id,locked:!x.locked})}); if(!r.ok) throw new Error(); await loadCustomerDevices(customerId); } catch { btn.disabled=false; alert('لم ينجح تغيير حالة الجهاز.'); } });
+    card.append(btn); rows.append(card);
+  }
+  if (!(d.devices||[]).length) rows.textContent='لا توجد أجهزة مسجلة.';
+  events.replaceChildren();
+  for (const x of (e.events||[])) { const p=document.createElement('p'); p.textContent=`${x.event_at} — ${x.event_type} — ${x.ip_address||'—'} — ${x.details||''}`; events.append(p); }
+  if (!(e.events||[]).length) events.textContent='لا يوجد نشاط مسجل.';
+}
+</script>

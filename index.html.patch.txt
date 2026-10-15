@@ -1,0 +1,11 @@
+في index.html:
+1) استبدل:
+<button class="detailBtn details">ملف العميل والتقارير</button><button class="paymentBtn">تسديد دين</button>
+بـ:
+<button class="detailBtn details">ملف العميل والتقارير</button><button class="creditBtn">تعديل الحد الائتماني</button><button class="paymentBtn">تسديد دين</button>
+
+2) بجانب handler الخاص بزر details وpaymentBtn أضف:
+el.querySelector('.creditBtn').onclick=()=>editCreditLimit(c.id,c.name,c.creditLimit);
+
+3) أضف هذه الدالة قبل recordClientPayment:
+async function editCreditLimit(id,name,current){const raw=prompt('الحد الائتماني الجديد للعميل '+name+' بالدولار:',Number(current||0).toFixed(2));if(raw===null)return;const value=raw.trim();if(!value||!Number.isFinite(Number(value))||Number(value)<0||Math.round(Number(value)*100)!==Number(value)*100){alert('أدخل حداً ائتمانياً صحيحاً، صفراً أو أكثر، وبحد أقصى منزلتين عشريتين.');return}if(!confirm('تأكيد تغيير الحد الائتماني للعميل '+name+' من '+money(current)+' إلى '+money(Number(value))+'؟ لن يتغير الدين الحالي.'))return;try{await api('/api/admin/clients/credit-limit',{method:'POST',body:JSON.stringify({id,creditLimit:Number(value)})});alert('تم تحديث الحد الائتماني بنجاح.');await loadClients();if(!$('clientDetails').classList.contains('hidden'))await loadClientDetails(id)}catch(e){alert(e.message)}}
